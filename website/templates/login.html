@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-5 col-lg-4">
+            <div class="card shadow-lg mt-4">
+                <div class="card-body p-4">
+                    <h3 class="text-center fw-bold mb-4">
+                        {% if type == 'login' %}Sign In{% else %}Create Account{% endif %}
+                    </h3>
+                    
+                    <!-- Form Contextual Exception Alerts -->
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ category }} border-0 text-white p-2 small mb-3 text-center rounded shadow-sm" 
+                                    style="{% if category == 'success' %}background-color: #10b981;{% else %}background-color: #ef4444;{% endif %}">
+                                    {{ message }}
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+                    
+                    <form action="{{ url_for('login' if type == 'login' else 'register') }}" method="POST">
+                        {% if type == 'login' %}
+                        <div class="mb-3">
+                            <label class="form-label small text-muted">Username or Email Address</label>
+                            <input type="text" name="login_input" class="form-control" placeholder="trader123 or name@example.com" required autocomplete="off">
+                        </div>
+                        {% else %}
+                        <div class="mb-3">
+                            <label class="form-label small text-muted">Username</label>
+                            <input type="text" name="username" class="form-control" placeholder="trader123" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small text-muted">Email Address</label>
+                            <input type="email" name="email" class="form-control" placeholder="name@example.com" required>
+                        </div>
+                        {% endif %}
+
+                        <div class="mb-3">
+                            <label class="form-label small text-muted">Password</label>
+                            <input type="password" name="password" class="form-control" placeholder="••••••••" required>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100 fw-semibold mt-3">
+                            {% if type == 'login' %}Log In{% else %}Register Account{% endif %}
+                        </button>
+                    </form>
+
+                    <div class="mt-4 text-center">
+                        {% if type == 'login' %}
+                        <p class="small text-muted mb-0">New to the platform? <a href="{{ url_for('register') }}" class="text-primary text-decoration-none fw-medium">Create account</a></p>
+                        {% else %}
+                        <p class="small text-muted mb-0">Already registered? <a href="{{ url_for('login') }}" class="text-primary text-decoration-none fw-medium">Login here</a></p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,10 @@
+<div class="container card shadow-sm p-4" style="max-width: 400px; margin-top: 10vh;">
+    <h3 class="text-center mb-4">Create Trader Account</h3>
+    {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+    <form method="POST">
+        <div class="mb-3"><label>Username</label><input type="text" name="username" class="form-control" required></div>
+        <div class="mb-3"><label>Email</label><input type="email" name="email" class="form-control" required></div>
+        <div class="mb-3"><label>Password</label><input type="password" name="password" class="form-control" required></div>
+        <button type="submit" class="btn btn-success w-100">Register</button>
+    </form>
+</div>

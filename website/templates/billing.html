@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-5">
+            <div class="card p-4 shadow-lg border-primary">
+                <h4 class="fw-bold text-center">Institutional Premium</h4>
+                <h1 class="text-center my-4 fw-black">$49<small class="fs-6 text-muted">/mo</small></h1>
+                <ul class="list-unstyled mb-4">
+                    <li class="mb-2">✅ Sub-5-Second Alerts</li>
+                    <li class="mb-2">✅ Advanced Conformal Metrics</li>
+                    <li class="mb-2">✅ Multi-Asset Dashboard</li>
+                </ul>
+                
+                <form>
+                    <div class="mb-3">
+                        <label class="form-label small">Card Details</label>
+                        <input type="text" class="form-control mb-2" placeholder="Card Number">
+                        <div class="row g-2">
+                            <div class="col-6"><input type="text" class="form-control" placeholder="MM/YY"></div>
+                            <div class="col-6"><input type="text" class="form-control" placeholder="CVC"></div>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary w-100 py-3 fw-bold">Upgrade Now</button>
+                </form>
+                
+                <div class="text-center mt-4 pt-3 border-top">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/5/5e/Visa_Inc._logo.svg" height="20" class="me-3">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" height="25">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

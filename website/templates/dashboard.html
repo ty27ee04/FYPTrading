@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+    <div class="row g-4">
+        <div class="col-lg-4">
+    <div class="card p-4 shadow-sm border-0 h-100">
+        <label class="small text-muted mb-2 fw-bold text-uppercase">Market Instrument</label>
+        <select class="form-select mb-4 fw-bold shadow-sm border-light" onchange="location = this.value;">
+            <option value="{{ url_for('dashboard', asset='XAUUSD') }}" {% if current_asset == 'XAUUSD' %}selected{% endif %}>XAUUSD (Gold)</option>
+            <option value="{{ url_for('dashboard', asset='FBMKLCI') }}" {% if current_asset == 'FBMKLCI' %}selected{% endif %}>FBM KLCI</option>
+            <option value="{{ url_for('dashboard', asset='BTCUSD') }}" {% if current_asset == 'BTCUSD' %}selected{% endif %}>BTCUSD</option>
+        </select>
+
+        <div class="text-center py-4 rounded mb-4 shadow-sm" style="background: #f8fafc; border: 1px solid #edf2f7;">
+            <span class="text-muted small d-block mb-1 fw-semibold">DEEP LEARNING SIGNAL</span>
+            <h1 class="display-3 fw-black m-0 {% if data.action == 'BUY' %}text-success{% elif data.action == 'SELL' %}text-danger{% else %}text-warning{% endif %}">
+                {{ data.action }}
+            </h1>
+        </div>
+
+        <div class="mb-4">
+            <div class="d-flex justify-content-between small fw-bold mb-2">
+                <span class="text-secondary">Regime Validity Score</span>
+                <span class="text-primary">{{ data.confidence }}%</span>
+            </div>
+            <div class="progress" style="height: 8px; background-color: #e2e8f0;">
+                <div class="progress-bar bg-primary progress-bar-striped" style="width: {{ data.confidence }}%"></div>
+            </div>
+            <p class="text-muted mt-1" style="font-size: 0.7rem;">CP Layer filter active (α = 0.10)</p>
+        </div>
+
+        <div class="p-3 border-0 rounded shadow-sm mb-3" style="background: #eff6ff; border-left: 4px solid #2563eb !important;">
+            <span class="text-primary small d-block mb-1 fw-bold">RL AGENT RECOMMENDED SIZE</span>
+            <div class="h3 mb-0 fw-bold text-dark font-monospace">0.10 <small class="fs-6">Lots</small></div>
+        </div>
+
+        <div class="p-3 border-0 rounded shadow-sm" style="background: #f1f5f9;">
+            <span class="text-muted small d-block mb-1 fw-bold">DYNAMIC EXIT TARGET (TCN)</span>
+            <div class="h3 mb-0 fw-bold text-dark font-monospace">${{ data.target_exit }}</div>
+        </div>
+    </div>
+</div>
+
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0 p-3 h-100">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="fw-bold m-0 text-dark">{{ current_asset }} <span class="badge bg-light text-primary border ms-2">M5 Timeframe</span></h5>
+                    <div class="d-flex align-items-center">
+                        <span class="spinner-grow spinner-grow-sm text-success me-2" role="status"></span>
+                        <span class="small fw-bold text-success">Live Feed</span>
+                    </div>
+                </div>
+                
+                <div id="chartContainer" style="width: 100%; height: 500px; position: relative;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+    window.onload = function() {
+        const container = document.getElementById('chartContainer');
+        
+        // Use a small timeout to ensure the browser has calculated the div width
+        setTimeout(() => {
+            const chart = LightweightCharts.createChart(container, {
+                width: container.clientWidth,
+                height: 500,
+                layout: {
+                    background: { type: 'solid', color: '#ffffff' },
+                    textColor: '#64748b',
+                },
+                grid: {
+                    vertLines: { color: '#f1f5f9' },
+                    horzLines: { color: '#f1f5f9' },
+                },
+                timeScale: {
+                    borderColor: '#e2e8f0',
+                    timeVisible: true,
+                    secondsVisible: false,
+                },
+            });
+
+            const candlestickSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
+                upColor: '#22c55e',
+                downColor: '#ef4444',
+                borderVisible: false,
+                wickUpColor: '#22c55e',
+                wickDownColor: '#ef4444',
+            });
+
+            // THE FIX: Use Unix Timestamps (Seconds)
+            // Ensure these dates are valid for 2026 as per system context
+            const data = [
+                { time: 1780272000, open: 2030.00, high: 2038.50, low: 2028.00, close: 2035.20 },
+                { time: 1780275600, open: 2035.20, high: 2042.00, low: 2034.00, close: 2039.80 },
+                { time: 1780279200, open: 2039.80, high: 2045.00, low: 2038.50, close: 2044.10 },
+                { time: 1780282800, open: 2044.10, high: 2048.00, low: 2041.00, close: 2043.50 },
+                { time: 1780286400, open: 2043.50, high: 2052.00, low: 2042.00, close: 2050.80 },
+                { time: 1780290000, open: 2050.80, high: 2055.00, low: 2048.00, close: 2053.20 }
+            ];
+
+            candlestickSeries.setData(data);
+            chart.timeScale().fitContent();
+
+            // Handle window resizing
+            window.addEventListener('resize', () => {
+                chart.applyOptions({ width: container.clientWidth });
+            });
+        }, 100); 
+    };
+</script>
+{% endblock %}
