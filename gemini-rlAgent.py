@@ -92,8 +92,9 @@ def preprocess_gold_data(train_path, test_path, lookback=60, max_horizon=24, pt_
         scaler = StandardScaler()
         scaler.fit(df_tr[feat_cols])
 
-    scaler = StandardScaler()
-    X_tr_s = scaler.fit_transform(df_tr[feat_cols])
+    # [FIX]: Removed the re-initialization (scaler = StandardScaler()) 
+    # Use transform() directly to preserve the original distribution parameters
+    X_tr_s = scaler.transform(df_tr[feat_cols])
     X_te_s = scaler.transform(df_te[feat_cols])
     
     def seq_gen(data, labels):
@@ -176,12 +177,19 @@ class GoldTradingEnv(gym.Env):
             p_b = F.softmax(self.model_b(x_input), dim=1).cpu().numpy()[0][1]
         
         meta = self.meta_df.iloc[self.current_step]
-        fpnl = (meta['close'] - self.entry_price) * self.position * self.current_lot * 100 if self.position != 0 else 0
+
+        # [FIX]: Normalize floating PnL by ATR instead of account balance.
+        # This ensures the RL observation space remains perfectly stationary 
+        # regardless of how large the AI dynamic lot sizing compounds the account.
+        if self.position != 0:
+            fpnl_stationary = ((meta['close'] - self.entry_price) * self.position) / (meta['atr'] + 1e-9)
+        else:
+            fpnl_stationary = 0.0
         
         return np.array([
             p_a[1], p_a[2], p_b, 
             meta['atr_p']*100, meta['sin_h'], meta['cos_h'],
-            fpnl/self.balance
+            fpnl_stationary
         ], dtype=np.float32)
 
     def step(self, action):

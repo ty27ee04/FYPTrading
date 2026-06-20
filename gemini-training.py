@@ -342,9 +342,14 @@ if __name__ == "__main__":
 
     # --- PHASE 1: HYPERPARAMETER TUNING ---
     dataset = TensorDataset(torch.FloatTensor(X_tr_f), torch.LongTensor(y_tr_f))
+
+    # [FIX]: Added a 24-bar purge gap to prevent Triple Barrier data leakage
+    purge_gap = 24  # Matches max_horizon used in TBM preprocessing
     train_idx = int(0.8 * len(dataset))
-    t_set = torch.utils.data.Subset(dataset, range(0, train_idx))
+
+    t_set = torch.utils.data.Subset(dataset, range(0, train_idx - purge_gap))
     v_set = torch.utils.data.Subset(dataset, range(train_idx, len(dataset)))
+    
     t_loader = DataLoader(t_set, batch_size=128, shuffle=True)
     v_loader = DataLoader(v_set, batch_size=128, shuffle=False)
 
