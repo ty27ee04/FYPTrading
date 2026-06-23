@@ -154,10 +154,10 @@ class ModelB_TCN(nn.Module):
 # 2. THE RL ASSISTED ENVIRONMENT
 # ==========================================
 # ==========================================
-# 3. RL ENVIRONMENT (Continuous Risk-Scaler)
+# 3. RL ENVIRONMENT (Continuous Risk-Scaler)(Dense Equity-Tracking)
 # ==========================================
 class GoldTradingEnv(gym.Env):
-    def __init__(self, X, meta_df, model_a, model_b, initial_balance=100):
+    def __init__(self, X, meta_df, model_a, model_b, initial_balance=1000.0): # 10k Capital Base
         super(GoldTradingEnv, self).__init__()
         self.X = torch.FloatTensor(X).to(device)
         self.meta_df = meta_df
@@ -165,10 +165,17 @@ class GoldTradingEnv(gym.Env):
         self.model_b = model_b.eval()
         self.initial_balance = initial_balance
         
-        # Action: 0.0 to 1.0 (Mapped to 0.01 to 0.10 lots)
         self.action_space = spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32)
         self.observation_space = spaces.Box(low=-1, high=1, shape=(7,), dtype=np.float32)
         self.reset()
+
+    def get_equity(self, step_idx=None):
+        if step_idx is None: step_idx = self.current_step
+        if self.position == 0: return self.balance
+        
+        current_close = self.meta_df.iloc[step_idx]['close']
+        fpnl = (current_close - self.entry_price) * self.position * self.current_lot * 100
+        return self.balance + fpnl
 
     def _get_obs(self):
         with torch.no_grad():
@@ -177,15 +184,12 @@ class GoldTradingEnv(gym.Env):
             p_b = F.softmax(self.model_b(x_input), dim=1).cpu().numpy()[0][1]
         
         meta = self.meta_df.iloc[self.current_step]
-
-        # [FIX]: Normalize floating PnL by ATR instead of account balance.
-        # This ensures the RL observation space remains perfectly stationary 
-        # regardless of how large the AI dynamic lot sizing compounds the account.
+        
         if self.position != 0:
             fpnl_stationary = ((meta['close'] - self.entry_price) * self.position) / (meta['atr'] + 1e-9)
         else:
             fpnl_stationary = 0.0
-        
+            
         return np.array([
             p_a[1], p_a[2], p_b, 
             meta['atr_p']*100, meta['sin_h'], meta['cos_h'],
@@ -193,52 +197,50 @@ class GoldTradingEnv(gym.Env):
         ], dtype=np.float32)
 
     def step(self, action):
-        reward = 0
-        meta = self.meta_df.iloc[self.current_step]
-        close_price = meta['close']
+        equity_now = self.get_equity()
+        meta_now = self.meta_df.iloc[self.current_step]
+        close_now = meta_now['close']
         
-        # 1. FIXED STRATEGY EXIT (Model A controls the logic)
         obs = self._get_obs()
         buy_p, sell_p, valid_p = obs[0], obs[1], obs[2]
         
         if self.position != 0:
-            # Exit if Signal flips or disappears
             should_exit = False
             if self.position == 1 and buy_p < 0.40: should_exit = True
             if self.position == -1 and sell_p < 0.40: should_exit = True
             
             if should_exit or self.current_step >= len(self.X) - 2:
-                pnl = (close_price - self.entry_price) * self.position * self.current_lot * 100
-                self.balance += pnl
-                reward += pnl * 1.0 # Reward for real money
+                self.balance = equity_now 
                 self.position = 0; self.current_lot = 0
 
-        # 2. RL ENTRY (RL controls the risk)
-        elif valid_p > 0.52: # Only trade if Model B says the regime is valid
+        elif valid_p > 0.52:
             if buy_p > 0.48 or sell_p > 0.48:
                 multiplier = float(action[0])
-                # Scale from 0.01 to 0.10 lots
-                self.current_lot = round(0.01 + (multiplier * 0.09), 2)
+                # Professional Risk Management: 0.05 to 0.50 lots on a $10k account
+                self.current_lot = round(0.05 + (multiplier * 0.45), 2) 
                 self.position = 1 if buy_p > sell_p else -1
-                self.entry_price = close_price
-                reward -= 0.05 # Transaction fee
-
-        # 3. PENALTIES
-        drawdown = (self.max_balance - self.balance) / (self.max_balance + 1e-9)
-        if drawdown > 0.12: reward -= 0.2 # Safety check
-        
-        # Inactivity Penalty (If valid signal exists but RL chooses tiny risk)
-        if self.position == 0 and valid_p > 0.8:
-            reward -= 0.02
+                self.entry_price = close_now
+                
+                # Dynamic Commission/Spread Approximation ($10 per full lot)
+                self.balance -= (self.current_lot * 10.0) 
 
         self.current_step += 1
-        self.max_balance = max(self.max_balance, self.balance)
-        done = self.balance <= 10 or self.current_step >= len(self.X) - 1
+        equity_next = self.get_equity()
         
+        # Reward strictly based on % return
+        step_return = (equity_next - equity_now) / self.initial_balance
+        reward = step_return * 100.0 # Multiplier puts rewards in optimal neural net range [-1, 1]
+        
+        if self.position != 0: reward -= 0.001
+            
+        # Drawdown trigger: Abort if account drops below $5,000 (50% loss)
+        done = equity_next <= 5000 or self.current_step >= len(self.X) - 2
+        if equity_next <= 5000: reward -= 10.0 
+            
         return self._get_obs(), reward, done, False, {}
 
     def reset(self, seed=None, options=None):
-        self.balance = self.initial_balance; self.max_balance = self.initial_balance
+        self.balance = self.initial_balance
         self.current_step = 0; self.position = 0; self.entry_price = 0; self.current_lot = 0
         return self._get_obs(), {}
 
@@ -263,29 +265,34 @@ if __name__ == "__main__":
     print("[*] Generating Performance Analysis...")
     test_env = GoldTradingEnv(X_te, test_meta, model_a, model_b)
     obs, _ = test_env.reset()
-    history, trades = [100.0], []
+    history, trades = [1000.0], []
     
     for i in range(len(X_te)-1):
         action, _ = rl_agent.predict(obs, deterministic=True)
         old_pos = test_env.position
-        old_lot = test_env.current_lot
+        
         obs, reward, done, _, _ = test_env.step(action)
-        history.append(test_env.balance)
+        history.append(test_env.get_equity()) 
         
         if old_pos == 0 and test_env.position != 0:
             trades.append({'time': test_meta.iloc[i]['time'], 'type': 'BUY' if test_env.position==1 else 'SELL', 'price': test_meta.iloc[i]['close'], 'lots': test_env.current_lot})
         elif old_pos != 0 and test_env.position == 0:
             pnl = (test_meta.iloc[i]['close'] - trades[-1]['price']) * (1 if trades[-1]['type']=='BUY' else -1) * trades[-1]['lots'] * 100
             trades[-1].update({'exit_time': test_meta.iloc[i]['time'], 'exit_price': test_meta.iloc[i]['close'], 'pnl': pnl})
-        if done: break
+        
+        # [FIX] Ensure the final trade is logged if loop aborts
+        if done: 
+            if test_env.position != 0:
+                pnl = (test_meta.iloc[i]['close'] - trades[-1]['price']) * (1 if trades[-1]['type']=='BUY' else -1) * trades[-1]['lots'] * 100
+                trades[-1].update({'exit_time': test_meta.iloc[i]['time'], 'exit_price': test_meta.iloc[i]['close'], 'pnl': pnl})
+            break
 
-    # Final table printing logic (Same as your previous request)
     trade_log = pd.DataFrame([t for t in trades if 'pnl' in t])
     trade_log.to_csv('fyp_rl_trade_log.csv', index=False)
 
     # Calculation for Table
-    final_equity = test_env.balance
-    net_profit = final_equity - 100
+    final_equity = test_env.get_equity()
+    net_profit = final_equity - 1000
     win_rate = (len(trade_log[trade_log['pnl'] > 0]) / len(trade_log) * 100) if len(trade_log) > 0 else 0
     returns = pd.Series(history).pct_change().replace([np.inf, -np.inf], 0).fillna(0)
     sharpe = (returns.mean() / (returns.std() + 1e-9) * np.sqrt(288 * 252))
