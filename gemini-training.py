@@ -28,9 +28,24 @@ def denoise_series(series, span=5):
     """Applies Exponential Moving Average - 100% Causal (No Future Peeking)."""
     return series.ewm(span=span, adjust=False).mean()
 
-# ==========================================
-# 1. EARLY STOPPING LOGIC
-# ==========================================
+# --- UPGRADE 1: FOCAL LOSS ---
+class FocalLoss(nn.Module):
+    """
+    Dynamically scales loss based on prediction confidence.
+    Down-weights the easily classified 'Hold' (Class 0) signals to force 
+    the model to focus on hard-to-predict Buy/Sell reversals.
+    """
+    def __init__(self, alpha=None, gamma=2.0):
+        super(FocalLoss, self).__init__()
+        self.gamma = gamma
+        self.alpha = alpha # Example: torch.tensor([0.2, 1.0, 1.0])
+
+    def forward(self, inputs, targets):
+        ce_loss = F.cross_entropy(inputs, targets, reduction='none', weight=self.alpha)
+        pt = torch.exp(-ce_loss)
+        focal_loss = ((1 - pt) ** self.gamma) * ce_loss
+        return focal_loss.mean()
+
 class EarlyStopping:
     def __init__(self, patience=15, min_delta=0.0001):
         self.patience = patience
@@ -50,9 +65,10 @@ class EarlyStopping:
             self.counter = 0
 
 # ==========================================
-# 2. TRIPLE-BARRIER PREPROCESSING (Indicators + Re-balance+ Session Logic + Volatility Filter + Denoising + Meta-Label Prep)
+# 2. PREPROCESSING 
 # ==========================================
-def preprocess_gold_data(train_path, test_path, lookback=60, max_horizon=24, pt_mult=2.5, sl_mult=2.5):
+# --- UPGRADE 2: ASYMMETRIC BARRIERS (pt_mult=3.0, sl_mult=2.0) ---
+def preprocess_gold_data(train_path, test_path, lookback=60, max_horizon=24, pt_mult=3.0, sl_mult=2.0):
     def apply_tbm(path):
         if not os.path.exists(path): return None
         df = pd.read_csv(path)
@@ -60,17 +76,15 @@ def preprocess_gold_data(train_path, test_path, lookback=60, max_horizon=24, pt_
         df = df.sort_values('time').reset_index(drop=True)
         df = df.drop(columns=['spread', 'real_volume'], errors='ignore')
         
-        # --- 1. DATA DENOISING ---
         # Smooth 'close' price before calculating indicators
         df['close_smooth'] = denoise_series(df['close'])
 
-        # 1. TIME-OF-DAY FEATURES (Cyclical Encoding)
-        # Allows model to distinguish between quiet Asia and volatile NY sessions
+        # Time-Of-Day Cyclical Encoding
         df['hour'] = df['time'].dt.hour
         df['sin_hour'] = np.sin(2 * np.pi * df['hour'] / 24)
         df['cos_hour'] = np.cos(2 * np.pi * df['hour'] / 24)
 
-        # --- 2. INDICATORS (Using Smoothed Prices) ---
+        # Base Indicators
         delta = df['close_smooth'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -80,20 +94,29 @@ def preprocess_gold_data(train_path, test_path, lookback=60, max_horizon=24, pt_
         rmf = tp * df['tick_volume']
         df['mfi_n'] = (100 - (100 / (1 + (rmf.where(tp > tp.shift(1), 0).rolling(14).sum() / (rmf.where(tp < tp.shift(1), 0).rolling(14).sum() + 1e-9))))) / 100.0
         
-        # ATR for barriers
+        # ATR 
         h_l, h_pc, l_pc = df['high']-df['low'], (df['high']-df['close'].shift(1)).abs(), (df['low']-df['close'].shift(1)).abs()
         df['atr'] = pd.concat([h_l, h_pc, l_pc], axis=1).max(axis=1).rolling(window=14).mean()
-        
-        # Volatility Filter
         df['vol_filter'] = df['atr'] / (df['atr'].rolling(window=288).mean() + 1e-9)
+
+        # --- UPGRADE 3: MULTI-TIMEFRAME (MTF) INJECTION ---
+        # 1 Hour = 12 M5 bars. We calculate pseudo-H1 metrics to give the model macro-context.
+        
+        # 1. H1 Trend Moving Average & Slope
+        df['ma_h1'] = df['close_smooth'].rolling(window=12).mean()
+        df['h1_trend_slope'] = (df['ma_h1'] - df['ma_h1'].shift(12)) / (df['ma_h1'].shift(12) + 1e-9)
+
+        # 2. H1 RSI Approximation (14 Hours = 168 M5 bars)
+        gain_h1 = (delta.where(delta > 0, 0)).rolling(window=168).mean()
+        loss_h1 = (-delta.where(delta < 0, 0)).rolling(window=168).mean()
+        df['rsi_h1'] = (100 - (100 / (1 + (gain_h1 / (loss_h1 + 1e-9))))) / 100.0
 
         df = df.dropna().reset_index(drop=True)
 
-        # --- 3. TRIPLE BARRIER LABELING ---
+        # Triple Barrier Labeling (Now mathematically asymmetric)
         c, h, l, a = df['close'].values, df['high'].values, df['low'].values, df['atr'].values
         labels = np.zeros(len(df), dtype=int)
         for i in range(len(df) - max_horizon):
-            # Re-balanced barriers: Sells are often sharper, so we use sl_mult carefully
             up, lo = c[i] + (pt_mult * a[i]), c[i] - (sl_mult * a[i])
             f_pt = np.where(h[i+1:i+1+max_horizon] >= up)[0]
             f_sl = np.where(l[i+1:i+1+max_horizon] <= lo)[0]
@@ -105,17 +128,17 @@ def preprocess_gold_data(train_path, test_path, lookback=60, max_horizon=24, pt_
         df['label'] = labels
         df = df.iloc[:-max_horizon].copy()
 
-        # --- 4. CYCLICAL TIME ---
         df['hour'] = df['time'].dt.hour
         df['sin_h'], df['cos_h'] = np.sin(2*np.pi*df['hour']/24), np.cos(2*np.pi*df['hour']/24)
-
         df['log_ret'] = np.log(df['close_smooth'] / df['close_smooth'].shift(1))
         df['atr_p'] = df['atr'] / df['close_smooth']
         
         return df.dropna().reset_index(drop=True)
 
     df_tr, df_te = apply_tbm(train_path), apply_tbm(test_path)
-    feat_cols = ['log_ret', 'rsi_n', 'mfi_n', 'atr_p', 'vol_filter', 'sin_h', 'cos_h']
+    
+    # Feature list updated with MTF context
+    feat_cols = ['log_ret', 'rsi_n', 'mfi_n', 'atr_p', 'vol_filter', 'sin_h', 'cos_h', 'h1_trend_slope', 'rsi_h1']
     
     scaler = StandardScaler()
     X_tr_s = scaler.fit_transform(df_tr[feat_cols])
@@ -158,7 +181,6 @@ class ModelA_Base(nn.Module):
         ctx, _ = self.attn(out)
         return self.head(ctx)
 
-# Meta-Labeling Model: Temporal Convolutional Network
 class ModelB_TCN(nn.Module):
     def __init__(self, in_dim, num_channels=[32, 32], kernel_size=3):
         super().__init__()
@@ -168,13 +190,13 @@ class ModelB_TCN(nn.Module):
             in_ch = in_dim if i == 0 else num_channels[i-1]
             out_ch = num_channels[i]
             layers += [
-                nn.ConstantPad1d(( (kernel_size-1) * dilation_size, 0), 0), # Causal padding
+                nn.ConstantPad1d(( (kernel_size-1) * dilation_size, 0), 0),
                 nn.Conv1d(in_ch, out_ch, kernel_size, dilation=dilation_size),
                 nn.ReLU(),
                 nn.Dropout(0.2)
             ]
         self.network = nn.Sequential(*layers)
-        self.classifier = nn.Linear(num_channels[-1], 2) # Binary: Correct signal or not
+        self.classifier = nn.Linear(num_channels[-1], 2)
 
     def forward(self, x):
         x = self.network(x.permute(0, 2, 1))
@@ -184,15 +206,16 @@ class ModelB_TCN(nn.Module):
 # 4. AUTOMATED TUNING (OPTUNA)
 # ==========================================
 def objective(trial):
-    # Suggest Hyperparameters
     hid_dim = trial.suggest_int('hid_dim', 64, 256, step=64)
     lr = trial.suggest_float('lr', 1e-5, 1e-3, log=True)
     
     model = ModelA_Base(in_dim_global, hid_dim).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    criterion = nn.CrossEntropyLoss()
     
-    # Simple 2-epoch evaluation for speed during tuning
+    # Using Focal Loss for Optuna evaluation too
+    class_weights = torch.tensor([0.2, 1.0, 1.0]).to(device)
+    criterion = FocalLoss(alpha=class_weights, gamma=2.0)
+    
     model.train()
     for _ in range(2):
         for bx, by in t_loader:
@@ -213,7 +236,7 @@ def objective(trial):
 # ==========================================
 # 5. BACKTEST ENGINE
 # ==========================================
-def run_detailed_backtest(df, preds, initial_equity=100, fixed_lot=0.01):
+def run_detailed_backtest(df, preds, initial_equity=10000, fixed_lot=0.01):
     df = df.copy()
     df['sig'] = preds
     df['pos'] = df['sig'].replace({2: -1}) 
@@ -225,7 +248,6 @@ def run_detailed_backtest(df, preds, initial_equity=100, fixed_lot=0.01):
     fixed_history = [initial_equity]
     dynamic_history = [initial_equity]
     
-    # Track period returns for Sharpe Ratio
     returns_fixed = []
     returns_dynamic = []
     
@@ -238,15 +260,12 @@ def run_detailed_backtest(df, preds, initial_equity=100, fixed_lot=0.01):
     current_trade = None
     
     for i in range(1, len(df)):
-        # Calculate Dynamic Lot (0.1 per $10k, Min 0.01, Max 10.0)
         raw_dyn_lot = (equity_dynamic / 10000) * 0.1
         current_dyn_lot = np.clip(round(raw_dyn_lot, 2), 0.01, 10.0)
         
-        # PnL Updates
         pnl_fixed = price_diffs[i] * positions[i-1] * fixed_lot * contract_size
         pnl_dynamic = price_diffs[i] * positions[i-1] * current_dyn_lot * contract_size
         
-        # Store Percentage Returns (for Sharpe)
         returns_fixed.append(pnl_fixed / equity_fixed)
         returns_dynamic.append(pnl_dynamic / equity_dynamic)
         
@@ -256,7 +275,6 @@ def run_detailed_backtest(df, preds, initial_equity=100, fixed_lot=0.01):
         fixed_history.append(equity_fixed)
         dynamic_history.append(equity_dynamic)
         
-        # Trade Log Logic
         if positions[i] != 0 and positions[i] != positions[i-1]:
             if current_trade:
                 p_diff = (opens[i] - current_trade['entry_price']) * current_trade['type']
@@ -280,9 +298,7 @@ def run_detailed_backtest(df, preds, initial_equity=100, fixed_lot=0.01):
             })
             trades.append(current_trade); current_trade = None
 
-    # --- ADD THIS AFTER THE FOR LOOP ---
     if current_trade:
-        # Exit the final trade at the very last price in the dataset
         last_idx = len(df) - 1
         p_diff = (opens[last_idx] - current_trade['entry_price']) * current_trade['type']
         current_trade.update({
@@ -291,26 +307,22 @@ def run_detailed_backtest(df, preds, initial_equity=100, fixed_lot=0.01):
             'pnl_dynamic': p_diff * current_trade['lot_at_entry'] * contract_size
         })
         trades.append(current_trade)
-    # -----------------------------------
 
     df['equity_fixed'] = fixed_history
     df['equity_dynamic'] = dynamic_history
     
-    # SHARPE RATIO CALCULATION
     def calculate_sharpe(ret_list):
         rets = np.array(ret_list)
         if len(rets) == 0 or np.std(rets) == 0: return 0
-        # Annualization: sqrt(288 bars/day * 252 days/year)
         return (np.mean(rets) / np.std(rets)) * np.sqrt(288 * 252)
 
     sharpe_fixed = calculate_sharpe(returns_fixed)
     sharpe_dynamic = calculate_sharpe(returns_dynamic)
 
-    # Max Drawdowns
     def get_max_dd(series):
         cum_max = series.cummax()
         drawdown = ((series - cum_max) / (cum_max + 1e-9))
-        return max(drawdown.min(), -1.0) # Cannot lose more than 100%
+        return max(drawdown.min(), -1.0) 
 
     trade_log = pd.DataFrame(trades)
     win_rate = (len(trade_log[trade_log['pnl_dynamic'] > 0]) / len(trade_log) * 100) if len(trade_log) > 0 else 0
@@ -328,7 +340,7 @@ def run_detailed_backtest(df, preds, initial_equity=100, fixed_lot=0.01):
     }
 
 # ==========================================
-# 5. MAIN EXECUTION
+# 6. MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
     try:
@@ -340,11 +352,9 @@ if __name__ == "__main__":
         print(f"[!] Error: {e}")
         exit()
 
-    # --- PHASE 1: HYPERPARAMETER TUNING ---
     dataset = TensorDataset(torch.FloatTensor(X_tr_f), torch.LongTensor(y_tr_f))
 
-    # [FIX]: Added a 24-bar purge gap to prevent Triple Barrier data leakage
-    purge_gap = 24  # Matches max_horizon used in TBM preprocessing
+    purge_gap = 24  
     train_idx = int(0.8 * len(dataset))
 
     t_set = torch.utils.data.Subset(dataset, range(0, train_idx - purge_gap))
@@ -355,19 +365,23 @@ if __name__ == "__main__":
 
     print("[*] Starting Optuna Study...")
     study = optuna.create_study(direction='minimize')
-    study.optimize(objective, n_trials=50)
+    study.optimize(objective, n_trials=30) # Reduced to 30 for speed with MTF features
     print(f"[*] Best Hyperparams: {study.best_params}")
 
-    torch.cuda.empty_cache() # Clears unused VRAM
+    torch.cuda.empty_cache() 
 
     # --- PHASE 2: TRAIN BASE MODEL (MODEL A) ---
     best_params = study.best_params
     model_a = ModelA_Base(in_dim_global, best_params['hid_dim']).to(device)
     optimizer_a = torch.optim.Adam(model_a.parameters(), lr=best_params['lr'], weight_decay=1e-4)
-    criterion_a = nn.CrossEntropyLoss()
+    
+    # Applying Focal Loss natively during training
+    class_weights = torch.tensor([0.2, 1.0, 1.0]).to(device)
+    criterion_a = FocalLoss(alpha=class_weights, gamma=2.0)
+    
     stopper = EarlyStopping(patience=15)
 
-    print("[*] Training Model A...")
+    print("[*] Training Model A (with Focal Loss)...")
     best_val_loss = float('inf')
     for epoch in range(100):
         model_a.train()
@@ -395,7 +409,7 @@ if __name__ == "__main__":
             print(f"[*] Early Stopping at Epoch {epoch+1}")
             break
 
-    torch.cuda.empty_cache() # Clears unused VRAM
+    torch.cuda.empty_cache() 
 
     # --- PHASE 3: META-LABELING (MODEL B) ---
     model_a.load_state_dict(torch.load('best_model_a.pth'))
@@ -403,7 +417,6 @@ if __name__ == "__main__":
     
     print("[*] Generating Meta-Labels for TCN in batches...")
     train_preds_list = []
-    # Using a batch size of 512 for speed; adjust to 256 if it still crashes
     meta_label_gen_loader = DataLoader(TensorDataset(torch.FloatTensor(X_tr_f)), batch_size=512, shuffle=False)
     
     with torch.no_grad():
@@ -414,11 +427,8 @@ if __name__ == "__main__":
             train_preds_list.extend(preds)
     
     train_preds = np.array(train_preds_list)
-    
-    # Meta-Label = 1 if Model A was correct (and not a 'Hold' signal), 0 otherwise
     meta_y = ((train_preds == y_tr_f) & (train_preds != 0)).astype(int)
     
-    # Free up memory before training Model B
     torch.cuda.empty_cache()
 
     meta_dataset = TensorDataset(torch.FloatTensor(X_tr_f), torch.LongTensor(meta_y))
@@ -443,7 +453,6 @@ if __name__ == "__main__":
             epoch_loss += loss.item()
         
         avg_loss = epoch_loss / len(meta_loader)
-
         print(f"Epoch {epoch+1} | Meta Loss: {avg_loss:.4f}")
 
         if avg_loss < best_meta_loss:
@@ -456,34 +465,24 @@ if __name__ == "__main__":
             print(f"[*] Model B Early Stopping at Epoch {epoch}")
             break
 
-    torch.cuda.empty_cache() # Clears unused VRAM
+    torch.cuda.empty_cache() 
 
-    # 4. Final Evaluation (Memory Efficient Batch-wise Prediction)
     # --- PHASE 4: FINAL INFERENCE (HIERARCHICAL) ---
     print("[*] Loading Best Weights for Hierarchical Backtest...")
     model_a.load_state_dict(torch.load('best_model_a.pth'))
-    model_b.load_state_dict(torch.load('best_model_b.pth')) # LOAD MODEL B HERE
+    model_b.load_state_dict(torch.load('best_model_b.pth')) 
     model_a.eval(); model_b.eval()
+    
     final_preds = []
     test_loader = DataLoader(TensorDataset(torch.FloatTensor(X_te)), batch_size=256, shuffle=False)
-    
-    # Wrap test data in a simple DataLoader to process in chunks
-    test_tensor_dataset = TensorDataset(torch.FloatTensor(X_te))
-    temp_loader = DataLoader(test_tensor_dataset, batch_size=256, shuffle=False)
-
-    # Use the metadata to check volatility during prediction
-    vol_values = test_meta['vol_filter'].values
 
     print("[*] Generating predictions ...")
     with torch.no_grad():
         for batch in test_loader:
             bx = batch[0].to(device)
-            # 1. Model A suggests direction
             sig_a = torch.argmax(model_a(bx), dim=1).cpu().numpy()
-            # 2. Model B decides if signal is trustworthy
             prob_b = F.softmax(model_b(bx), dim=1)[:, 1].cpu().numpy()
             
-            # GATEKEEPER LOGIC: If Model B confidence < 0.52, force 'Hold'
             sig_final = np.where(prob_b > 0.52, sig_a, 0)
             final_preds.extend(sig_final)
 
@@ -492,14 +491,6 @@ if __name__ == "__main__":
     
     print("\n[+] Classification Report:")
     print(classification_report(y_te, test_preds, target_names=['Hold', 'Buy', 'Sell'], zero_division=0))
-
-    cm = confusion_matrix(y_te, test_preds)
-    plt.figure(figsize=(6,5))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Greens', xticklabels=['H','B','S'], yticklabels=['H','B','S'])
-    plt.title('FYP: Confusion Matrix')
-    plt.xlabel('Predicted Signal (AI Guess)')
-    plt.ylabel('Original Signal (Market Actual)')
-    plt.savefig('fyp_cm.png')
 
     res_df, trade_log, stats = run_detailed_backtest(test_meta, test_preds)
 
@@ -534,60 +525,4 @@ if __name__ == "__main__":
     else:
         print("[!] Warning: No trades were recorded!")
 
-    # ==========================================
-    # 5. FINAL VISUALIZATION SUITE (Replacement Block)
-    # ==========================================
-    
-    # 1. Helper Function for Dual-Axis Plots (Equity + Price)
-    def plot_equity_vs_price(df, equity_col, title, filename, color='orange'):
-        fig, ax1 = plt.subplots(figsize=(12, 6))
-
-        # Axis 1: Strategy Equity (Left)
-        ax1.set_xlabel('Date/Time')
-        ax1.set_ylabel('Account Balance ($)', color=color, fontsize=12, fontweight='bold')
-        ax1.plot(df['time'], df[equity_col], color=color, linewidth=2, label='Strategy Equity')
-        ax1.tick_params(axis='y', labelcolor=color)
-        ax1.grid(True, linestyle='--', alpha=0.3)
-
-        # Axis 2: Underlying Price (Right)
-        ax2 = ax1.twinx() 
-        ax2.set_ylabel('XAUUSD Price', color='gray', fontsize=12)
-        ax2.plot(df['time'], df['close'], color='gray', alpha=0.4, label='XAUUSD Price')
-        ax2.tick_params(axis='y', labelcolor='gray')
-
-        plt.title(title, fontsize=14)
-        fig.tight_layout()
-        plt.savefig(filename)
-        plt.close()
-
-    # 2. Generate Chart 1: Fixed Lot vs Price Movement
-    plot_equity_vs_price(res_df, 'equity_fixed', 
-                         f'Fixed Lot Strategy (0.01) vs. Gold Price', 
-                         'fyp_fixed_vs_price.png', color='blue')
-
-    # 3. Generate Chart 2: Dynamic Lot vs Price Movement
-    plot_equity_vs_price(res_df, 'equity_dynamic', 
-                         'AI Dynamic Strategy vs. Gold Price', 
-                         'fyp_dynamic_vs_price.png', color='orange')
-
-    # 4. Generate Chart 3: Original Dual Equity (Log Scale for Comparison)
-    plt.figure(figsize=(12, 6))
-    plt.plot(res_df['time'], res_df['equity_fixed'], label=f'Fixed Lot (0.01)', color='blue', alpha=0.8)
-    plt.plot(res_df['time'], res_df['equity_dynamic'], label='AI Dynamic (Compounding)', color='orange', linewidth=2)
-    
-    # Use Log Scale because Dynamic ($10M) is too large for Linear Scale
-    plt.yscale('log') 
-    
-    plt.title('Final Performance Comparison (Log Scale)', fontsize=14)
-    plt.ylabel('Account Balance ($) - Logarithmic Scale')
-    plt.legend()
-    plt.grid(True, which="both", ls="-", alpha=0.2)
-    plt.savefig('fyp_dual_equity.png')
-
-    print("[*] All artifacts (3 charts, 1 log, 1 CM) saved successfully. Project Complete.")
-
-    # PRO-TIP: Save the final stats too for your records
-    stats_df = pd.DataFrame([stats])
-    stats_df.to_csv('fyp_final_stats.csv', index=False)
-
-    print("[*] All artifacts saved successfully. Project Complete.")
+    print("[*] DL Execution Complete. Ready for RL pipeline.")
