@@ -28,7 +28,7 @@ def denoise_series(series, span=5):
     """Applies Exponential Moving Average - 100% Causal (No Future Peeking)."""
     return series.ewm(span=span, adjust=False).mean()
 
-# --- UPGRADE 1: FOCAL LOSS ---
+# --- UPGRADE 1: FOCAL LOSS (Math Refined) ---
 class FocalLoss(nn.Module):
     """
     Dynamically scales loss based on prediction confidence.
@@ -38,12 +38,19 @@ class FocalLoss(nn.Module):
     def __init__(self, alpha=None, gamma=2.0):
         super(FocalLoss, self).__init__()
         self.gamma = gamma
-        self.alpha = alpha # Example: torch.tensor([0.2, 1.0, 1.0])
+        self.alpha = alpha 
 
     def forward(self, inputs, targets):
-        ce_loss = F.cross_entropy(inputs, targets, reduction='none', weight=self.alpha)
+        # Calculate raw cross entropy without weights first to get accurate probabilities
+        ce_loss = F.cross_entropy(inputs, targets, reduction='none')
         pt = torch.exp(-ce_loss)
         focal_loss = ((1 - pt) ** self.gamma) * ce_loss
+        
+        # Apply class weights mathematically AFTER the focal modulation
+        if self.alpha is not None:
+            alpha_t = self.alpha[targets]
+            focal_loss = alpha_t * focal_loss
+            
         return focal_loss.mean()
 
 class EarlyStopping:
@@ -114,17 +121,47 @@ def preprocess_gold_data(train_path, test_path, lookback=60, max_horizon=24, pt_
         df = df.dropna().reset_index(drop=True)
 
         # Triple Barrier Labeling (Now mathematically asymmetric)
+        # Triple Barrier Labeling (Corrected Asymmetric Logic)
         c, h, l, a = df['close'].values, df['high'].values, df['low'].values, df['atr'].values
         labels = np.zeros(len(df), dtype=int)
+        
         for i in range(len(df) - max_horizon):
-            up, lo = c[i] + (pt_mult * a[i]), c[i] - (sl_mult * a[i])
-            f_pt = np.where(h[i+1:i+1+max_horizon] >= up)[0]
-            f_sl = np.where(l[i+1:i+1+max_horizon] <= lo)[0]
-            p_idx, s_idx = f_pt[0] if len(f_pt)>0 else 999, f_sl[0] if len(f_sl)>0 else 999
-            if p_idx < s_idx: labels[i] = 1 
-            elif s_idx < p_idx: labels[i] = 2 
-            else: labels[i] = 0 
+            # BUY SETUP: Profit Target = UP (+3 ATR), Stop Loss = DOWN (-2 ATR)
+            buy_pt = c[i] + (pt_mult * a[i])
+            buy_sl = c[i] - (sl_mult * a[i])
             
+            # SELL SETUP: Profit Target = DOWN (-3 ATR), Stop Loss = UP (+2 ATR)
+            sell_pt = c[i] - (pt_mult * a[i])
+            sell_sl = c[i] + (sl_mult * a[i])
+            
+            # Find the exact moments the barriers are touched
+            hit_buy_pt = np.where(h[i+1:i+1+max_horizon] >= buy_pt)[0]
+            hit_buy_sl = np.where(l[i+1:i+1+max_horizon] <= buy_sl)[0]
+            
+            hit_sell_pt = np.where(l[i+1:i+1+max_horizon] <= sell_pt)[0]
+            hit_sell_sl = np.where(h[i+1:i+1+max_horizon] >= sell_sl)[0]
+            
+            # Get the index of the first touch (999 if it never touches within horizon)
+            idx_b_pt = hit_buy_pt[0] if len(hit_buy_pt) > 0 else 999
+            idx_b_sl = hit_buy_sl[0] if len(hit_buy_sl) > 0 else 999
+            
+            idx_s_pt = hit_sell_pt[0] if len(hit_sell_pt) > 0 else 999
+            idx_s_sl = hit_sell_sl[0] if len(hit_sell_sl) > 0 else 999
+            
+            # A success means hitting the Profit Target BEFORE the Stop Loss
+            buy_success = idx_b_pt < idx_b_sl
+            sell_success = idx_s_pt < idx_s_sl
+            
+            if buy_success and not sell_success:
+                labels[i] = 1
+            elif sell_success and not buy_success:
+                labels[i] = 2
+            elif buy_success and sell_success:
+                # If market volatility is so high it hits both targets, favor the one that was hit FIRST
+                labels[i] = 1 if idx_b_pt < idx_s_pt else 2
+            else:
+                labels[i] = 0
+                
         df['label'] = labels
         df = df.iloc[:-max_horizon].copy()
 
@@ -236,7 +273,7 @@ def objective(trial):
 # ==========================================
 # 5. BACKTEST ENGINE
 # ==========================================
-def run_detailed_backtest(df, preds, initial_equity=10000, fixed_lot=0.01):
+def run_detailed_backtest(df, preds, initial_equity=10000, fixed_lot=0.1):
     df = df.copy()
     df['sig'] = preds
     df['pos'] = df['sig'].replace({2: -1}) 
@@ -492,6 +529,14 @@ if __name__ == "__main__":
     print("\n[+] Classification Report:")
     print(classification_report(y_te, test_preds, target_names=['Hold', 'Buy', 'Sell'], zero_division=0))
 
+    cm = confusion_matrix(y_te, test_preds)
+    plt.figure(figsize=(6,5))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Greens', xticklabels=['H','B','S'], yticklabels=['H','B','S'])
+    plt.title('FYP: Confusion Matrix')
+    plt.xlabel('Predicted Signal (AI Guess)')
+    plt.ylabel('Original Signal (Market Actual)')
+    plt.savefig('fyp_cm.png')
+
     res_df, trade_log, stats = run_detailed_backtest(test_meta, test_preds)
 
     start_d, end_d = res_df['time'].iloc[0], res_df['time'].iloc[-1]
@@ -503,7 +548,7 @@ if __name__ == "__main__":
     print(f"║  Period: {start_d.strftime('%Y-%m-%d')} to {end_d.strftime('%Y-%m-%d')}    ║")
     print(f"║  Test Duration:   {duration_months:.2f} Months                         ║")
     print("╠══════════════════════════════════════════════════════╣")
-    print(f"║  [1] FIXED LOT STRATEGY (Constant {0.01} Lots)         ║")
+    print(f"║  [1] FIXED LOT STRATEGY (Constant {0.1} Lots)         ║")
     print(f"║  Final Equity:    ${stats['final_fixed']:<10,.2f}                       ║")
     print(f"║  Net Profit:      ${(stats['final_fixed'] - stats['initial']):<10,.2f}                       ║")
     print(f"║  Max Drawdown:    {stats['max_dd_fixed']*100:<10.2f}%                       ║")
@@ -526,3 +571,62 @@ if __name__ == "__main__":
         print("[!] Warning: No trades were recorded!")
 
     print("[*] DL Execution Complete. Ready for RL pipeline.")
+
+    
+    # ==========================================
+    # FINAL VISUALIZATION SUITE (Replacement Block)
+    # ==========================================
+    
+    # 1. Helper Function for Dual-Axis Plots (Equity + Price)
+    def plot_equity_vs_price(df, equity_col, title, filename, color='orange'):
+        fig, ax1 = plt.subplots(figsize=(12, 6))
+
+        # Axis 1: Strategy Equity (Left)
+        ax1.set_xlabel('Date/Time')
+        ax1.set_ylabel('Account Balance ($)', color=color, fontsize=12, fontweight='bold')
+        ax1.plot(df['time'], df[equity_col], color=color, linewidth=2, label='Strategy Equity')
+        ax1.tick_params(axis='y', labelcolor=color)
+        ax1.grid(True, linestyle='--', alpha=0.3)
+
+        # Axis 2: Underlying Price (Right)
+        ax2 = ax1.twinx() 
+        ax2.set_ylabel('XAUUSD Price', color='gray', fontsize=12)
+        ax2.plot(df['time'], df['close'], color='gray', alpha=0.4, label='XAUUSD Price')
+        ax2.tick_params(axis='y', labelcolor='gray')
+
+        plt.title(title, fontsize=14)
+        fig.tight_layout()
+        plt.savefig(filename)
+        plt.close()
+
+    # 2. Generate Chart 1: Fixed Lot vs Price Movement
+    plot_equity_vs_price(res_df, 'equity_fixed', 
+                         f'Fixed Lot Strategy (0.1) vs. Gold Price', 
+                         'fyp_fixed_vs_price.png', color='blue')
+
+    # 3. Generate Chart 2: Dynamic Lot vs Price Movement
+    plot_equity_vs_price(res_df, 'equity_dynamic', 
+                         'AI Dynamic Strategy vs. Gold Price', 
+                         'fyp_dynamic_vs_price.png', color='orange')
+
+    # 4. Generate Chart 3: Original Dual Equity (Log Scale for Comparison)
+    plt.figure(figsize=(12, 6))
+    plt.plot(res_df['time'], res_df['equity_fixed'], label=f'Fixed Lot (0.1)', color='blue', alpha=0.8)
+    plt.plot(res_df['time'], res_df['equity_dynamic'], label='AI Dynamic (Compounding)', color='orange', linewidth=2)
+    
+    # Use Log Scale because Dynamic ($10M) is too large for Linear Scale
+    plt.yscale('log') 
+    
+    plt.title('Final Performance Comparison (Log Scale)', fontsize=14)
+    plt.ylabel('Account Balance ($) - Logarithmic Scale')
+    plt.legend()
+    plt.grid(True, which="both", ls="-", alpha=0.2)
+    plt.savefig('fyp_dual_equity.png')
+
+    print("[*] All artifacts (3 charts, 1 log, 1 CM) saved successfully. Project Complete.")
+
+    # PRO-TIP: Save the final stats too for your records
+    stats_df = pd.DataFrame([stats])
+    stats_df.to_csv('fyp_final_stats.csv', index=False)
+
+    print("[*] All artifacts saved successfully. Project Complete.")
