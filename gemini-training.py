@@ -273,96 +273,114 @@ def objective(trial):
 # ==========================================
 # 5. BACKTEST ENGINE
 # ==========================================
-def run_detailed_backtest(df, preds, initial_equity=10000, fixed_lot=0.1):
+def run_detailed_backtest(df, preds, initial_equity=10000, fixed_lot=0.10, pt_mult=3.0, sl_mult=2.0, max_horizon=24, spread_penalty=0.20):
     df = df.copy()
-    df['sig'] = preds
-    df['pos'] = df['sig'].replace({2: -1}) 
-    
     contract_size = 100 
+    
     equity_fixed = initial_equity
     equity_dynamic = initial_equity
     
     fixed_history = [initial_equity]
     dynamic_history = [initial_equity]
     
-    returns_fixed = []
-    returns_dynamic = []
-    
-    price_diffs = (df['close'] - df['close'].shift(1)).values
-    positions = df['pos'].values
-    times = df['time'].values
-    opens = df['open'].values
-    
     trades = []
-    current_trade = None
+    
+    # State tracking
+    in_trade = False
+    trade_type = 0 # 1 for Buy, -1 for Sell
+    entry_price = 0
+    entry_idx = 0
+    entry_atr = 0
+    dyn_lot_at_entry = 0
     
     for i in range(1, len(df)):
-        raw_dyn_lot = (equity_dynamic / 10000) * 0.1
-        current_dyn_lot = np.clip(round(raw_dyn_lot, 2), 0.01, 10.0)
-        
-        pnl_fixed = price_diffs[i] * positions[i-1] * fixed_lot * contract_size
-        pnl_dynamic = price_diffs[i] * positions[i-1] * current_dyn_lot * contract_size
-        
-        returns_fixed.append(pnl_fixed / equity_fixed)
-        returns_dynamic.append(pnl_dynamic / equity_dynamic)
-        
-        equity_fixed += pnl_fixed
-        equity_dynamic += pnl_dynamic
-        
+        # 1. CHECK EXITS IF WE ARE IN A TRADE
+        if in_trade:
+            high, low, close = df['high'].iloc[i], df['low'].iloc[i], df['close'].iloc[i]
+            bars_held = i - entry_idx
+            
+            exit_triggered = False
+            exit_price = 0
+            exit_reason = ""
+            
+            if trade_type == 1: # LONG POSITIONS
+                tp = entry_price + (pt_mult * entry_atr)
+                sl = entry_price - (sl_mult * entry_atr)
+                if high >= tp: exit_triggered, exit_price, exit_reason = True, tp, "Take Profit"
+                elif low <= sl: exit_triggered, exit_price, exit_reason = True, sl, "Stop Loss"
+                elif bars_held >= max_horizon: exit_triggered, exit_price, exit_reason = True, close, "Time Stop"
+                    
+            elif trade_type == -1: # SHORT POSITIONS
+                tp = entry_price - (pt_mult * entry_atr)
+                sl = entry_price + (sl_mult * entry_atr)
+                if low <= tp: exit_triggered, exit_price, exit_reason = True, tp, "Take Profit"
+                elif high >= sl: exit_triggered, exit_price, exit_reason = True, sl, "Stop Loss"
+                elif bars_held >= max_horizon: exit_triggered, exit_price, exit_reason = True, close, "Time Stop"
+
+            if exit_triggered:
+                # Raw diffs and Spread deduction
+                p_diff_raw = (exit_price - entry_price) * trade_type
+                p_diff_net = p_diff_raw - spread_penalty
+                
+                # Calculate actual spread cost in Dollars
+                spread_cost_dynamic = spread_penalty * dyn_lot_at_entry * contract_size
+                
+                # Calculate Net PnL
+                pnl_fixed = p_diff_net * fixed_lot * contract_size
+                pnl_dynamic = p_diff_net * dyn_lot_at_entry * contract_size
+                
+                equity_fixed += pnl_fixed
+                equity_dynamic += pnl_dynamic
+                
+                # ENHANCED TRADE LOGGING
+                trades.append({
+                    'Trade_ID': len(trades) + 1,
+                    'Entry_Time': df['time'].iloc[entry_idx], 
+                    'Exit_Time': df['time'].iloc[i],
+                    'Direction': 'Long' if trade_type==1 else 'Short',
+                    'Entry_Price': round(entry_price, 3), 
+                    'Exit_Price': round(exit_price, 3),
+                    'Exit_Reason': exit_reason,
+                    'Dynamic_Lot_Size': dyn_lot_at_entry,
+                    'Spread_Charge_USD': round(spread_cost_dynamic, 2),
+                    'Net_PnL_USD': round(pnl_dynamic, 2),
+                    'Running_Equity_USD': round(equity_dynamic, 2)
+                })
+                in_trade = False
+                
+        # 2. CHECK ENTRIES IF WE ARE NOT IN A TRADE
+        if not in_trade:
+            signal = preds[i]
+            if signal == 1 or signal == 2:
+                in_trade = True
+                trade_type = 1 if signal == 1 else -1
+                entry_price = df['open'].iloc[i] # Enter on open of next bar
+                entry_idx = i
+                entry_atr = df['atr'].iloc[i-1] # Use ATR from signal bar
+                
+                # Calculate Dynamic Lot
+                raw_dyn_lot = (equity_dynamic / 10000) * 0.1
+                dyn_lot_at_entry = np.clip(round(raw_dyn_lot, 2), 0.01, 10.0)
+
         fixed_history.append(equity_fixed)
         dynamic_history.append(equity_dynamic)
-        
-        if positions[i] != 0 and positions[i] != positions[i-1]:
-            if current_trade:
-                p_diff = (opens[i] - current_trade['entry_price']) * current_trade['type']
-                current_trade.update({
-                    'exit_time': times[i], 'exit_price': opens[i], 
-                    'pnl_fixed': p_diff * fixed_lot * contract_size,
-                    'pnl_dynamic': p_diff * current_trade['lot_at_entry'] * contract_size
-                })
-                trades.append(current_trade)
-            current_trade = {
-                'entry_time': times[i], 'entry_price': opens[i], 'type': positions[i], 
-                'type_str': 'Long' if positions[i]==1 else 'Short',
-                'lot_at_entry': current_dyn_lot
-            }
-        elif positions[i] == 0 and positions[i-1] != 0 and current_trade:
-            p_diff = (opens[i] - current_trade['entry_price']) * current_trade['type']
-            current_trade.update({
-                'exit_time': times[i], 'exit_price': opens[i], 
-                'pnl_fixed': p_diff * fixed_lot * contract_size,
-                'pnl_dynamic': p_diff * current_trade['lot_at_entry'] * contract_size
-            })
-            trades.append(current_trade); current_trade = None
 
-    if current_trade:
-        last_idx = len(df) - 1
-        p_diff = (opens[last_idx] - current_trade['entry_price']) * current_trade['type']
-        current_trade.update({
-            'exit_time': times[last_idx], 'exit_price': opens[last_idx], 
-            'pnl_fixed': p_diff * fixed_lot * contract_size,
-            'pnl_dynamic': p_diff * current_trade['lot_at_entry'] * contract_size
-        })
-        trades.append(current_trade)
-
-    df['equity_fixed'] = fixed_history
-    df['equity_dynamic'] = dynamic_history
+    df['equity_fixed'] = fixed_history[:len(df)]
+    df['equity_dynamic'] = dynamic_history[:len(df)]
     
-    def calculate_sharpe(ret_list):
-        rets = np.array(ret_list)
+    trade_log = pd.DataFrame(trades)
+    
+    def calculate_sharpe(equity_series):
+        rets = equity_series.pct_change().dropna()
         if len(rets) == 0 or np.std(rets) == 0: return 0
         return (np.mean(rets) / np.std(rets)) * np.sqrt(288 * 252)
-
-    sharpe_fixed = calculate_sharpe(returns_fixed)
-    sharpe_dynamic = calculate_sharpe(returns_dynamic)
 
     def get_max_dd(series):
         cum_max = series.cummax()
         drawdown = ((series - cum_max) / (cum_max + 1e-9))
         return max(drawdown.min(), -1.0) 
 
-    trade_log = pd.DataFrame(trades)
-    win_rate = (len(trade_log[trade_log['pnl_dynamic'] > 0]) / len(trade_log) * 100) if len(trade_log) > 0 else 0
+    win_rate = (len(trade_log[trade_log['Net_PnL_USD'] > 0]) / len(trade_log) * 100) if len(trade_log) > 0 else 0
     
     return df, trade_log, {
         'initial': initial_equity,
@@ -370,8 +388,8 @@ def run_detailed_backtest(df, preds, initial_equity=10000, fixed_lot=0.1):
         'final_dynamic': equity_dynamic,
         'max_dd_fixed': get_max_dd(df['equity_fixed']),
         'max_dd_dynamic': get_max_dd(df['equity_dynamic']),
-        'sharpe_fixed': sharpe_fixed,
-        'sharpe_dynamic': sharpe_dynamic,
+        'sharpe_fixed': calculate_sharpe(df['equity_fixed']),
+        'sharpe_dynamic': calculate_sharpe(df['equity_dynamic']),
         'num_trades': len(trade_log),
         'win_rate': win_rate
     }
@@ -570,9 +588,32 @@ if __name__ == "__main__":
     else:
         print("[!] Warning: No trades were recorded!")
 
+    # ==========================================
+    # 8. LIVE DEPLOYMENT EXPORT (ONNX)
+    # ==========================================
+    print("[*] Compiling Neural Networks to ONNX for Live Deployment...")
+    
+    # Create a dummy input tensor matching the M5 sequence shape (Batch, Lookback, Features)
+    dummy_input = torch.randn(1, 60, in_dim_global).to(device)
+    
+    # Export the Base Model (CNN-LSTM-Attention)
+    torch.onnx.export(model_a, dummy_input, "best_model_a_live.onnx", 
+                      export_params=True, opset_version=11, 
+                      do_constant_folding=True, 
+                      input_names=['input'], output_names=['output'],
+                      dynamic_axes={'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}})
+                      
+    # Export the Gatekeeper Model (TCN)
+    torch.onnx.export(model_b, dummy_input, "best_model_b_live.onnx", 
+                      export_params=True, opset_version=11, 
+                      do_constant_folding=True, 
+                      input_names=['input'], output_names=['output'],
+                      dynamic_axes={'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}})
+                      
+    print("[+] ONNX export complete. Models are isolated and ready for MetaTrader5 / VPS integration.")
+
     print("[*] DL Execution Complete. Ready for RL pipeline.")
 
-    
     # ==========================================
     # FINAL VISUALIZATION SUITE (Replacement Block)
     # ==========================================
