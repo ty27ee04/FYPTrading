@@ -1,3 +1,5 @@
 __pycache__
 Archieved
 outputs
+.env
+trading_bot.log

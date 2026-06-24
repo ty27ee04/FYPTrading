@@ -12,6 +12,8 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import joblib
 import optuna
+import time
+from datetime import datetime
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -306,14 +308,18 @@ def run_detailed_backtest(df, preds, initial_equity=10000, fixed_lot=0.10, pt_mu
             if trade_type == 1: # LONG POSITIONS
                 tp = entry_price + (pt_mult * entry_atr)
                 sl = entry_price - (sl_mult * entry_atr)
-                if high >= tp: exit_triggered, exit_price, exit_reason = True, tp, "Take Profit"
+                if high >= tp and low <= sl:
+                    exit_triggered, exit_price, exit_reason = True, sl, "Stop Loss (Same Bar Conflict)"
+                elif high >= tp: exit_triggered, exit_price, exit_reason = True, tp, "Take Profit"
                 elif low <= sl: exit_triggered, exit_price, exit_reason = True, sl, "Stop Loss"
                 elif bars_held >= max_horizon: exit_triggered, exit_price, exit_reason = True, close, "Time Stop"
                     
             elif trade_type == -1: # SHORT POSITIONS
                 tp = entry_price - (pt_mult * entry_atr)
                 sl = entry_price + (sl_mult * entry_atr)
-                if low <= tp: exit_triggered, exit_price, exit_reason = True, tp, "Take Profit"
+                if low <= tp and high >= sl:
+                    exit_triggered, exit_price, exit_reason = True, sl, "Stop Loss (Same Bar Conflict)"
+                elif low <= tp: exit_triggered, exit_price, exit_reason = True, tp, "Take Profit"
                 elif high >= sl: exit_triggered, exit_price, exit_reason = True, sl, "Stop Loss"
                 elif bars_held >= max_horizon: exit_triggered, exit_price, exit_reason = True, close, "Time Stop"
 
@@ -398,6 +404,10 @@ def run_detailed_backtest(df, preds, initial_equity=10000, fixed_lot=0.10, pt_mu
 # 6. MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
+    script_start_time = time.time()
+    start_datetime = datetime.now()
+    print(f"\n[*] Pipeline Execution Started: {start_datetime.strftime('%Y-%m-%d %H:%M:%S')}\n")
+
     try:
         X_tr_f, y_tr_f, X_te, y_te, test_meta = preprocess_gold_data(
         "XAUUSD_M5_2Year.csv", "XAUUSD_M5_6month.csv"
@@ -598,14 +608,14 @@ if __name__ == "__main__":
     
     # Export the Base Model (CNN-LSTM-Attention)
     torch.onnx.export(model_a, dummy_input, "best_model_a_live.onnx", 
-                      export_params=True, opset_version=11, 
+                      export_params=True, opset_version=18, 
                       do_constant_folding=True, 
                       input_names=['input'], output_names=['output'],
                       dynamic_axes={'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}})
                       
     # Export the Gatekeeper Model (TCN)
     torch.onnx.export(model_b, dummy_input, "best_model_b_live.onnx", 
-                      export_params=True, opset_version=11, 
+                      export_params=True, opset_version=18, 
                       do_constant_folding=True, 
                       input_names=['input'], output_names=['output'],
                       dynamic_axes={'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}})
@@ -671,3 +681,20 @@ if __name__ == "__main__":
     stats_df.to_csv('fyp_final_stats.csv', index=False)
 
     print("[*] All artifacts saved successfully. Project Complete.")
+
+    # --- END PIPELINE TIMER & SUMMARY ---
+    script_end_time = time.time()
+    end_datetime = datetime.now()
+    elapsed_time = script_end_time - script_start_time
+    
+    # Calculate Hours, Minutes, Seconds
+    hours, rem = divmod(elapsed_time, 3600)
+    minutes, seconds = divmod(rem, 60)
+    
+    print("\n╔══════════════════════════════════════════════════════╗")
+    print("║              PIPELINE EXECUTION SUMMARY              ║")
+    print("╠══════════════════════════════════════════════════════╣")
+    print(f"║  Start Time:    {start_datetime.strftime('%Y-%m-%d %H:%M:%S'):<36} ║")
+    print(f"║  End Time:      {end_datetime.strftime('%Y-%m-%d %H:%M:%S'):<36} ║")
+    print(f"║  Total Time:    {int(hours):02d}h {int(minutes):02d}m {seconds:05.2f}s{' ' * 22} ║")
+    print("╚══════════════════════════════════════════════════════╝\n")
