@@ -18,7 +18,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
     handlers=[
-        logging.FileHandler("trading_bot.log"), # Saves to text file
+        logging.FileHandler("trading_bot.log", encoding='utf-8'), # Saves to text file
         logging.StreamHandler()                 # Also prints to the console
     ]
 )
@@ -31,7 +31,7 @@ logging.getLogger("urllib3").setLevel(logging.WARNING)
 SYMBOL = "XAUUSD.m"  # Update this to match your exact broker symbol
 TIMEFRAME = mt5.TIMEFRAME_M5
 LOOKBACK = 60
-REQUIRED_CANDLES = 300 
+REQUIRED_CANDLES = 400 
 
 # --- Strategy Controls ---
 STRATEGY_TYPE = "FIXED"            # Options: "FIXED" or "DYNAMIC"
@@ -47,6 +47,13 @@ MAX_LOT_SAFETY = 50.0              # Broker Maximum Lot Cap
 TP_MULT = 3.0
 SL_MULT = 2.0
 MAGIC_NUMBER = 2026
+
+# --- AI Settings ---
+GATEKEEPER_THRESHOLD = 0.52        # Default TCN Confidence Threshold (52%)
+IS_BOT_ACTIVE = True               # <--- NEW: Master switch for Pause/Resume
+WEEKEND_PROTECTION = True          # <--- NEW: Enable Friday Flat protocol
+FRIDAY_LIQ_HOUR = 23               # <--- NEW: MT5 Server Hour to liquidate (23 = 11 PM)
+FRIDAY_LIQ_MINUTE = 50             # <--- NEW: MT5 Server Minute to liquidate
 
 # ==========================================
 # 1.5 TELEGRAM NOTIFICATION SYSTEM
@@ -72,6 +79,143 @@ def send_telegram_alert(message):
         requests.post(url, json=payload, timeout=5)
     except Exception as e:
         logging.error(f"Failed to send Telegram alert: {e}")
+
+telegram_offset = None  # Remembers the last message read so we don't process it twice
+
+def check_telegram_commands():
+    # 1. Bring ALL Master Menu variables into the global scope
+    global GATEKEEPER_THRESHOLD, telegram_offset, IS_BOT_ACTIVE
+    global STRATEGY_TYPE, ALLOW_MULTIPLE_TRADES
+    global FIXED_LOT_SIZE, DYN_STEP_EQUITY, DYN_STEP_LOT, MAX_LOT_SAFETY
+    
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+        
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
+    params = {"timeout": 1, "allowed_updates": ["message"]}
+    if telegram_offset:
+        params["offset"] = telegram_offset
+        
+    try:
+        response = requests.get(url, params=params, timeout=2)
+        data = response.json()
+        
+        if not data.get("ok"):
+            return
+            
+        for result in data.get("result", []):
+            telegram_offset = result["update_id"] + 1
+            message = result.get("message", {})
+            chat_id = str(message.get("chat", {}).get("id", ""))
+            text = message.get("text", "").strip()
+            
+            if chat_id != str(TELEGRAM_CHAT_ID):
+                continue
+                
+            # --- COMMAND ROUTER ---
+            text_lower = text.lower()
+
+            if text_lower.startswith("/kill"):
+                send_telegram_alert("💀 **EMERGENCY KILL SWITCH** 💀\nSevering MT5 connection and shutting down Python script...")
+                logging.info("Remote /kill command executed. Exiting script.")
+                mt5.shutdown()
+                os._exit(0) # Immediately kills the CMD process
+
+            elif text_lower.startswith("/stop"):
+                IS_BOT_ACTIVE = False
+                send_telegram_alert("⏸️ **BOT PAUSED** ⏸️\nThe AI will ignore the market until you type `/start`.")
+                logging.info("C2 Update: Bot state set to PAUSED.")
+
+            elif text_lower.startswith("/start"):
+                IS_BOT_ACTIVE = True
+                send_telegram_alert("▶️ **BOT RESUMED** ▶️\nThe AI is actively analyzing the market again.")
+                logging.info("C2 Update: Bot state set to ACTIVE.")
+                
+            elif text_lower.startswith("/status"):
+                eq = mt5.account_info().equity
+                state_icon = "🟢 ACTIVE" if IS_BOT_ACTIVE else "🟡 PAUSED"
+                
+                status_msg = (
+                    f"📊 **BOT STATUS & SETTINGS** 📊\n\n"
+                    f"⚙️ **Engine State:** `{state_icon}`\n"
+                    f"🏦 **Equity:** `${eq:,.2f}`\n"
+                    f"🧠 **Threshold:** `{GATEKEEPER_THRESHOLD * 100:.2f}%`\n"
+                    f"🔄 **Strategy:** `{STRATEGY_TYPE}`\n"
+                    f"🔀 **Multi-Trade:** `{'ON' if ALLOW_MULTIPLE_TRADES else 'OFF'}`\n"
+                    f"📌 **Fixed Lot:** `{FIXED_LOT_SIZE}`\n"
+                    f"📈 **Dyn Equity Step:** `${DYN_STEP_EQUITY}`\n"
+                    f"📈 **Dyn Lot Step:** `{DYN_STEP_LOT}`\n"
+                    f"🛡️ **Max Lot:** `{MAX_LOT_SAFETY}`"
+                )
+                send_telegram_alert(status_msg)
+                
+            elif text_lower.startswith("/threshold"):
+                try:
+                    new_val = float(text.split()[1])
+                    if 0.0 <= new_val <= 1.0:
+                        GATEKEEPER_THRESHOLD = new_val
+                        send_telegram_alert(f"✅ Threshold updated to: `{new_val * 100:.2f}%`")
+                        logging.info(f"C2 Update: Threshold -> {new_val}")
+                    else:
+                        send_telegram_alert("⚠️ Value must be between 0.0 and 1.0")
+                except: send_telegram_alert("⚠️ Format: `/threshold 0.55`")
+
+            elif text_lower.startswith("/strategy"):
+                try:
+                    new_val = text.split()[1].upper()
+                    if new_val in ["FIXED", "DYNAMIC"]:
+                        STRATEGY_TYPE = new_val
+                        send_telegram_alert(f"✅ Strategy Type updated to: `{STRATEGY_TYPE}`")
+                        logging.info(f"C2 Update: Strategy -> {STRATEGY_TYPE}")
+                    else:
+                        send_telegram_alert("⚠️ Strategy must be FIXED or DYNAMIC")
+                except: send_telegram_alert("⚠️ Format: `/strategy DYNAMIC`")
+
+            elif text_lower.startswith("/multitrade"):
+                try:
+                    new_val = text.split()[1].upper()
+                    if new_val in ["ON", "TRUE", "1"]:
+                        ALLOW_MULTIPLE_TRADES = True
+                    elif new_val in ["OFF", "FALSE", "0"]:
+                        ALLOW_MULTIPLE_TRADES = False
+                    send_telegram_alert(f"✅ Multi-Trade is now: `{'ON' if ALLOW_MULTIPLE_TRADES else 'OFF'}`")
+                    logging.info(f"C2 Update: Multi-Trade -> {ALLOW_MULTIPLE_TRADES}")
+                except: send_telegram_alert("⚠️ Format: `/multitrade ON` or `/multitrade OFF`")
+
+            elif text_lower.startswith("/fixedlot"):
+                try:
+                    new_val = float(text.split()[1])
+                    FIXED_LOT_SIZE = new_val
+                    send_telegram_alert(f"✅ Fixed Lot Size updated to: `{FIXED_LOT_SIZE}`")
+                    logging.info(f"C2 Update: Fixed Lot -> {FIXED_LOT_SIZE}")
+                except: send_telegram_alert("⚠️ Format: `/fixedlot 0.05`")
+
+            elif text_lower.startswith("/dynequity"):
+                try:
+                    new_val = float(text.split()[1])
+                    DYN_STEP_EQUITY = new_val
+                    send_telegram_alert(f"✅ Dynamic Equity Step updated to: `${DYN_STEP_EQUITY}`")
+                    logging.info(f"C2 Update: Dyn Equity -> {DYN_STEP_EQUITY}")
+                except: send_telegram_alert("⚠️ Format: `/dynequity 200.0`")
+
+            elif text_lower.startswith("/dynlot"):
+                try:
+                    new_val = float(text.split()[1])
+                    DYN_STEP_LOT = new_val
+                    send_telegram_alert(f"✅ Dynamic Lot Step updated to: `{DYN_STEP_LOT}`")
+                    logging.info(f"C2 Update: Dyn Lot Step -> {DYN_STEP_LOT}")
+                except: send_telegram_alert("⚠️ Format: `/dynlot 0.02`")
+
+            elif text_lower.startswith("/maxlot"):
+                try:
+                    new_val = float(text.split()[1])
+                    MAX_LOT_SAFETY = new_val
+                    send_telegram_alert(f"✅ Max Lot Safety Cap updated to: `{MAX_LOT_SAFETY}`")
+                    logging.info(f"C2 Update: Max Lot -> {MAX_LOT_SAFETY}")
+                except: send_telegram_alert("⚠️ Format: `/maxlot 10.0`")
+                    
+    except Exception as e:
+        pass
 
 # ==========================================
 # 2. INITIALIZATION & MODEL LOADING
@@ -165,19 +309,39 @@ def check_closed_trades():
             out_deal = deals[-1]
             profit = out_deal.profit
             price = out_deal.price
+            reason_code = out_deal.reason
+            comment = out_deal.comment.lower()
             
+            # --- NEW: Determine the exact reason for closure ---
+            if reason_code == mt5.DEAL_REASON_TP or "tp" in comment:
+                close_reason = "🎯 Take Profit (TP)"
+            elif reason_code == mt5.DEAL_REASON_SL or "sl" in comment:
+                close_reason = "🛑 Stop Loss (SL)"
+            elif "friday" in comment or "liquidation" in comment:
+                close_reason = "🛡️ Friday Flat (Weekend Close)"
+            elif reason_code == mt5.DEAL_REASON_SO:
+                close_reason = "💀 Margin Call (Stop Out)"
+            elif reason_code == mt5.DEAL_REASON_CLIENT:
+                close_reason = "🧑‍💻 Manual Close (User)"
+            else:
+                close_reason = f"⚙️ Broker/Auto (Code: {reason_code})"
+                
             icon = "🟢" if profit > 0 else "🔴"
             result_text = "PROFIT" if profit > 0 else "LOSS"
             
+            # --- INJECTED: Added the 📝 Reason to Telegram ---
             close_msg = (
                 f"{icon} **TRADE CLOSED ({result_text})** {icon}\n\n"
                 f"💎 **Asset:** {SYMBOL}\n"
                 f"🎫 **Ticket:** `#{ticket}`\n"
+                f"📝 **Reason:** {close_reason}\n"
                 f"💲 **Close Price:** `{price:.2f}`\n"
                 f"💵 **Net PnL:** `${profit:.2f}`\n"
                 f"🏦 **New Equity:** `${mt5.account_info().equity:,.2f}`"
             )
-            logging.info(f"Trade Closed: #{ticket} | PnL: ${profit:.2f}")
+            
+            # --- INJECTED: Added the Reason to the .log file ---
+            logging.info(f"Trade Closed: #{ticket} | Reason: {close_reason} | PnL: ${profit:.2f}")
             send_telegram_alert(close_msg)
             
     active_trade_tickets = current_tickets
@@ -186,12 +350,71 @@ def check_closed_trades():
 # 4. EXECUTION & BROKER ROUTING
 # ==========================================
 def execute_trade(action, atr):
-    if not ALLOW_MULTIPLE_TRADES:
-        positions = mt5.positions_get(symbol=SYMBOL)
-        if positions is not None and len(positions) > 0:
-            logging.info("Trade already active (Execution Lock ON). Skipping signal.")
-            return
+    # 1. Calculate Prices First
+    tick = mt5.symbol_info_tick(SYMBOL)
+    direction = "🟢 BUY" if action == 1 else "🔴 SELL"
+    
+    if action == 1: # BUY
+        price = tick.ask
+        sl = price - (atr * SL_MULT)
+        tp = price + (atr * TP_MULT)
+        order_type = mt5.ORDER_TYPE_BUY
+    elif action == -1: # SELL
+        price = tick.bid
+        sl = price + (atr * SL_MULT)
+        tp = price - (atr * TP_MULT)
+        order_type = mt5.ORDER_TYPE_SELL
 
+    # 2. Execution Lock & Reversal Logic
+    positions = mt5.positions_get(symbol=SYMBOL)
+    if positions is not None and len(positions) > 0:
+        if not ALLOW_MULTIPLE_TRADES:
+            for pos in positions:
+                # MT5 Types: 0 is BUY, 1 is SELL
+                is_opposite = (action == 1 and pos.type == mt5.ORDER_TYPE_SELL) or \
+                              (action == -1 and pos.type == mt5.ORDER_TYPE_BUY)
+                
+                if is_opposite:
+                    logging.info(f"🔄 REVERSAL DETECTED: Attempting to close opposite trade #{pos.ticket}...")
+                    
+                    # Prepare the counter-order to close the existing position
+                    close_tick = mt5.symbol_info_tick(SYMBOL)
+                    close_price = close_tick.ask if pos.type == mt5.ORDER_TYPE_SELL else close_tick.bid
+                    close_type = mt5.ORDER_TYPE_BUY if pos.type == mt5.ORDER_TYPE_SELL else mt5.ORDER_TYPE_SELL
+                    
+                    close_req = {
+                        "action": mt5.TRADE_ACTION_DEAL,
+                        "symbol": SYMBOL,
+                        "volume": pos.volume,
+                        "type": close_type,
+                        "position": pos.ticket, 
+                        "price": close_price,
+                        "deviation": 20,
+                        "magic": MAGIC_NUMBER,
+                        "comment": "AI Reversal Close",
+                        "type_time": mt5.ORDER_TIME_GTC,
+                        "type_filling": mt5.ORDER_FILLING_FOK,
+                    }
+                    
+                    close_result = mt5.order_send(close_req)
+                    
+                    if close_result.retcode != mt5.TRADE_RETCODE_DONE:
+                        logging.error(f"Failed to close trade #{pos.ticket} for reversal. Error Code: {close_result.retcode}")
+                        send_telegram_alert(f"⚠️ **REVERSAL FAILED** ⚠️\nCould not close Ticket `#{pos.ticket}`. Broker Error: `{close_result.retcode}`")
+                        return # Abort opening the new trade to protect margin
+                    else:
+                        logging.info(f"Successfully closed trade #{pos.ticket}. Proceeding with new {direction}.")
+                        # Let the script continue downward to open the new trade!
+                        
+                else:
+                    # Same direction trade already exists. Let it run.
+                    logging.info(
+                        f"Skipped Signal (Lock ON) -> "
+                        f"Dir: {direction} | Asset: {SYMBOL} | Entry: {price:.2f} | SL: {sl:.2f} | TP: {tp:.2f}"
+                    )
+                    return
+
+    # 3. Lot Size Calculation
     equity = mt5.account_info().equity
 
     if STRATEGY_TYPE == "FIXED":
@@ -205,19 +428,7 @@ def execute_trade(action, atr):
         
     lot_size = max(0.01, min(lot_size, MAX_LOT_SAFETY))
     
-    tick = mt5.symbol_info_tick(SYMBOL)
-    
-    if action == 1: # BUY
-        price = tick.ask
-        sl = price - (atr * SL_MULT)
-        tp = price + (atr * TP_MULT)
-        order_type = mt5.ORDER_TYPE_BUY
-    elif action == -1: # SELL
-        price = tick.bid
-        sl = price + (atr * SL_MULT)
-        tp = price - (atr * TP_MULT)
-        order_type = mt5.ORDER_TYPE_SELL
-        
+    # 4. Order Packaging
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": SYMBOL,
@@ -230,16 +441,28 @@ def execute_trade(action, atr):
         "magic": MAGIC_NUMBER,
         "comment": "AI Hybrid Execution",
         "type_time": mt5.ORDER_TIME_GTC,
-        "type_filling": mt5.ORDER_FILLING_IOC,
+        "type_filling": mt5.ORDER_FILLING_FOK,
     }
     
+    # 5. Broker Routing
     result = mt5.order_send(request)
+    
     if result.retcode != mt5.TRADE_RETCODE_DONE:
-        logging.warning(f"Order Failed. MT5 Error Code: {result.retcode}")
-        send_telegram_alert(f"⚠️ **TRADE FAILED** ⚠️\nError Code: {result.retcode}")
-    else:
-        direction = "🟢 BUY" if action == 1 else "🔴 SELL"
+        logging.warning(f"Order Failed (Code: {result.retcode}) -> Dir: {direction} | Entry: {price:.2f} | SL: {sl:.2f} | TP: {tp:.2f}")
         
+        fail_msg = (
+            f"⚠️ **TRADE REJECTED BY BROKER** ⚠️\n\n"
+            f"❌ **Error Code:** `{result.retcode}`\n"
+            f"📈 **Attempted:** {direction}\n"
+            f"💎 **Asset:** {SYMBOL}\n"
+            f"📊 **Volume:** {lot_size} Lots\n"
+            f"💲 **Price:** `{price:.2f}`\n"
+            f"🛑 **Stop Loss:** `{sl:.2f}`\n"
+            f"🎯 **Take Profit:** `{tp:.2f}`\n\n"
+            f"🤖 *Please check MT5 Terminal/Logs.*"
+        )
+        send_telegram_alert(fail_msg)
+    else:
         alert_msg = (
             f"🚨 **AI TRADE EXECUTED** 🚨\n\n"
             f"📈 **Direction:** {direction}\n"
@@ -253,13 +476,54 @@ def execute_trade(action, atr):
             f"🤖 *CNN-LSTM + TCN Hybrid System*"
         )
         
-        logging.info(f"$$$ {direction} EXECUTED! Ticket: {result.order} | Volume: {lot_size}")
+        logging.info(f"$$$ {direction} EXECUTED! Ticket: {result.order} | Dir: {direction} | Asset: {SYMBOL} | Volume: {lot_size} | Entry: {price:.2f} | SL: {sl:.2f} | TP: {tp:.2f}")
         send_telegram_alert(alert_msg)
+
+def liquidate_weekend_positions():
+    positions = mt5.positions_get(symbol=SYMBOL)
+    if positions is None or len(positions) == 0:
+        return False
+
+    logging.info("🛡️ WEEKEND PROTECTION TRIGGERED: Liquidating all open positions...")
+    closed_any = False
+
+    for pos in positions:
+        tick = mt5.symbol_info_tick(SYMBOL)
+        # Calculate the counter-order to close it
+        price = tick.ask if pos.type == mt5.ORDER_TYPE_SELL else tick.bid
+        close_type = mt5.ORDER_TYPE_BUY if pos.type == mt5.ORDER_TYPE_SELL else mt5.ORDER_TYPE_SELL
+
+        request = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": SYMBOL,
+            "volume": pos.volume,
+            "type": close_type,
+            "position": pos.ticket,
+            "price": price,
+            "deviation": 20,
+            "magic": MAGIC_NUMBER,
+            "comment": "Friday Liquidation",
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": mt5.ORDER_FILLING_FOK,
+        }
+
+        result = mt5.order_send(request)
+        if result.retcode == mt5.TRADE_RETCODE_DONE:
+            logging.info(f"Successfully liquidated Ticket #{pos.ticket} for the weekend.")
+            closed_any = True
+        else:
+            logging.error(f"Failed to liquidate Ticket #{pos.ticket}. Error: {result.retcode}")
+
+    if closed_any:
+        send_telegram_alert("🛡️ **FRIDAY LIQUIDATION COMPLETE** 🛡️\nAll positions forcefully closed to prevent weekend gap risk.")
+        
+    return True
 
 # ==========================================
 # 5. THE ACTIVE POLLING LOOP 
 # ==========================================
-logging.info("\n[*] Starting Live AI Execution Loop (With Real-Time Monitoring)...")
+send_telegram_alert("✅ **AI Live Execution Script Started** ✅\n\nThe bot is now actively monitoring the market and ready to execute trades based on AI signals.")
+logging.info("[*] Starting Live AI Execution Loop (With Real-Time Monitoring)...")
 
 try:
     initial_positions = mt5.positions_get(symbol=SYMBOL)
@@ -267,11 +531,44 @@ try:
         active_trade_tickets = {p.ticket for p in initial_positions}
 
     last_processed_candle = None  # <--- MEMORY FOR THE STALE CHECK
+    last_telegram_check = 0  # <--- NEW: Timer for Telegram API
+    friday_liquidation_done = False   # <--- NEW: Prevents the bot from liquidating 100 times in a row
 
     while True:
         current_time = time.time()
         
+        # --- CHECK TELEGRAM COMMANDS EVERY 10 SECONDS ---
+        if current_time - last_telegram_check >= 10:
+            check_telegram_commands()
+            last_telegram_check = current_time
+
         check_closed_trades()
+
+        # --- NEW: WEEKEND GAP PROTECTION CHECK ---
+        if WEEKEND_PROTECTION:
+            latest_tick = mt5.symbol_info_tick(SYMBOL)
+            if latest_tick:
+                # Convert the broker's UNIX timestamp to a readable datetime
+                srv_time = datetime.fromtimestamp(latest_tick.time)
+                
+                # weekday() 4 is Friday. 0 is Monday.
+                if srv_time.weekday() == 4 and srv_time.hour >= FRIDAY_LIQ_HOUR and srv_time.minute >= FRIDAY_LIQ_MINUTE:
+                    if not friday_liquidation_done:
+                        liquidate_weekend_positions()
+                        friday_liquidation_done = True
+                        
+                        # Automatically pause the bot so it doesn't open new trades 5 minutes later
+                        IS_BOT_ACTIVE = False
+                        send_telegram_alert("⏸️ **BOT HIBERNATING FOR WEEKEND** ⏸️\nThe AI has been paused. Use `/start` on Monday to resume trading.")
+                        logging.info("Bot put into weekend hibernation mode.")
+                        
+                # Reset the safety lock on Monday so it works again next week
+                elif srv_time.weekday() == 0:
+                    if friday_liquidation_done:
+                        friday_liquidation_done = False
+                        IS_BOT_ACTIVE = True  # <--- NEW: Auto-wakes the bot!
+                        send_telegram_alert("▶️ **MONDAY MARKET OPEN** ▶️\nWeekend hibernation complete. The AI is actively trading again.")
+        # -----------------------------------------
         
         seconds_past_candle = current_time % 300
         
@@ -293,6 +590,13 @@ try:
 
             logging.info("Processing New M5 Candle...")
             
+            # --- NEW: Check if the bot is paused before running AI ---
+            if not IS_BOT_ACTIVE:
+                logging.info("    -> Bot is currently PAUSED via Telegram. Skipping AI inference.")
+                time.sleep(2)
+                continue # Skips the rest of this loop and waits for the next candle
+
+            # --- AI INFERENCE (This only runs if IS_BOT_ACTIVE == True) ---
             input_tensor, current_atr = get_live_tensor()
             if input_tensor is not None:
                 logits_a = session_a.run(None, {'input': input_tensor})[0]
@@ -302,9 +606,13 @@ try:
                 exp_b = np.exp(logits_b - np.max(logits_b, axis=1, keepdims=True))
                 prob_b = (exp_b / np.sum(exp_b, axis=1, keepdims=True))[0][1]
                 
-                logging.info(f"    -> Model A: {sig_a} | Model B Gatekeeper: {prob_b*100:.2f}%")
+                # --- NEW: Translate the numeric signal to a readable word ---
+                action_map = {0: "HOLD", 1: "BUY", 2: "SELL"}
+                sig_name = action_map.get(sig_a, "UNKNOWN")
+
+                logging.info(f"    -> Model A: {sig_a} ({sig_name}) | Model B Gatekeeper: {prob_b*100:.2f}%")
                 
-                if prob_b > 0.52 and sig_a in [1, 2]:
+                if prob_b > GATEKEEPER_THRESHOLD and sig_a in [1, 2]:
                     trade_action = 1 if sig_a == 1 else -1
                     logging.info("    -> AI THRESHOLD MET. Initiating Trade Routing...")
                     execute_trade(trade_action, current_atr)
