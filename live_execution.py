@@ -1,5 +1,5 @@
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 import pandas as pd
 import numpy as np
 import MetaTrader5 as mt5
@@ -45,7 +45,7 @@ MAX_LOT_SAFETY = 50.0              # Broker Maximum Lot Cap
 
 # --- Risk Management ---
 TP_MULT = 3.0
-SL_MULT = 2.0
+SL_MULT = 3.0
 MAGIC_NUMBER = 2026
 
 # --- AI Settings ---
@@ -54,6 +54,11 @@ IS_BOT_ACTIVE = True               # <--- NEW: Master switch for Pause/Resume
 WEEKEND_PROTECTION = True          # <--- NEW: Enable Friday Flat protocol
 FRIDAY_LIQ_HOUR = 23               # <--- NEW: MT5 Server Hour to liquidate (23 = 11 PM)
 FRIDAY_LIQ_MINUTE = 50             # <--- NEW: MT5 Server Minute to liquidate
+
+# --- Trade Management ---
+USE_BREAK_EVEN = True
+BE_TRIGGER = 0.60          # 60% of the way to Take Profit milestone
+BE_BUFFER = 0.05           # Move SL to Entry +/- 0.05 to cover fees
 
 # ==========================================
 # 1.5 TELEGRAM NOTIFICATION SYSTEM
@@ -87,6 +92,8 @@ def check_telegram_commands():
     global GATEKEEPER_THRESHOLD, telegram_offset, IS_BOT_ACTIVE
     global STRATEGY_TYPE, ALLOW_MULTIPLE_TRADES
     global FIXED_LOT_SIZE, DYN_STEP_EQUITY, DYN_STEP_LOT, MAX_LOT_SAFETY
+    global TP_MULT, SL_MULT # <--- NEW: Added TP and SL to global scope
+    global USE_BREAK_EVEN, BE_TRIGGER, BE_BUFFER # <--- NEW: Break-Even Globals
     
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
         return
@@ -140,6 +147,8 @@ def check_telegram_commands():
                     f"⚙️ **Engine State:** `{state_icon}`\n"
                     f"🏦 **Equity:** `${eq:,.2f}`\n"
                     f"🧠 **Threshold:** `{GATEKEEPER_THRESHOLD * 100:.2f}%`\n"
+                    f"🎯 **Target Multipliers:** `TP {TP_MULT}x | SL {SL_MULT}x`\n"
+                    f"🛡️ **Break-Even:** `{'ON' if USE_BREAK_EVEN else 'OFF'}` | `{BE_TRIGGER*100:.0f}%` | `+{BE_BUFFER}`\n" # <--- NEW
                     f"🔄 **Strategy:** `{STRATEGY_TYPE}`\n"
                     f"🔀 **Multi-Trade:** `{'ON' if ALLOW_MULTIPLE_TRADES else 'OFF'}`\n"
                     f"📌 **Fixed Lot:** `{FIXED_LOT_SIZE}`\n"
@@ -159,6 +168,22 @@ def check_telegram_commands():
                     else:
                         send_telegram_alert("⚠️ Value must be between 0.0 and 1.0")
                 except: send_telegram_alert("⚠️ Format: `/threshold 0.55`")
+
+            elif text_lower.startswith("/sl"):
+                try:
+                    new_val = float(text.split()[1])
+                    SL_MULT = new_val
+                    send_telegram_alert(f"✅ Stop Loss Multiplier updated to: `{SL_MULT}x ATR`")
+                    logging.info(f"C2 Update: SL_MULT -> {SL_MULT}")
+                except: send_telegram_alert("⚠️ Format: `/sl 2.5`")
+
+            elif text_lower.startswith("/tp"):
+                try:
+                    new_val = float(text.split()[1])
+                    TP_MULT = new_val
+                    send_telegram_alert(f"✅ Take Profit Multiplier updated to: `{TP_MULT}x ATR`")
+                    logging.info(f"C2 Update: TP_MULT -> {TP_MULT}")
+                except: send_telegram_alert("⚠️ Format: `/tp 3.5`")
 
             elif text_lower.startswith("/strategy"):
                 try:
@@ -213,6 +238,33 @@ def check_telegram_commands():
                     send_telegram_alert(f"✅ Max Lot Safety Cap updated to: `{MAX_LOT_SAFETY}`")
                     logging.info(f"C2 Update: Max Lot -> {MAX_LOT_SAFETY}")
                 except: send_telegram_alert("⚠️ Format: `/maxlot 10.0`")
+
+            elif text_lower.startswith("/breakeven"):
+                try:
+                    new_val = text.split()[1].upper()
+                    if new_val in ["ON", "TRUE", "1"]:
+                        USE_BREAK_EVEN = True
+                    elif new_val in ["OFF", "FALSE", "0"]:
+                        USE_BREAK_EVEN = False
+                    send_telegram_alert(f"✅ Break-Even is now: `{'ON' if USE_BREAK_EVEN else 'OFF'}`")
+                    logging.info(f"C2 Update: Break-Even -> {USE_BREAK_EVEN}")
+                except: send_telegram_alert("⚠️ Format: `/breakeven ON` or `/breakeven OFF`")
+
+            elif text_lower.startswith("/betrigger"):
+                try:
+                    new_val = float(text.split()[1])
+                    BE_TRIGGER = new_val
+                    send_telegram_alert(f"✅ Break-Even Trigger updated to: `{BE_TRIGGER * 100:.0f}%` of Take Profit target")
+                    logging.info(f"C2 Update: BE_TRIGGER -> {BE_TRIGGER}")
+                except: send_telegram_alert("⚠️ Format: `/betrigger 0.60` (for 60%)")
+
+            elif text_lower.startswith("/bebuffer"):
+                try:
+                    new_val = float(text.split()[1])
+                    BE_BUFFER = new_val
+                    send_telegram_alert(f"✅ Break-Even Buffer updated to: `+{BE_BUFFER}`")
+                    logging.info(f"C2 Update: BE_BUFFER -> {BE_BUFFER}")
+                except: send_telegram_alert("⚠️ Format: `/bebuffer 0.05`")
                     
     except Exception as e:
         pass
@@ -290,6 +342,13 @@ def get_live_tensor():
     tensor = np.expand_dims(live_sequence, axis=0).astype(np.float32)
     return tensor, live_atr
 
+def get_server_time_str():
+    """Fetches the latest MT5 server time and formats it to a readable string."""
+    tick = mt5.symbol_info_tick(SYMBOL)
+    if tick:
+        return datetime.fromtimestamp(tick.time, timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+    return "UNKNOWN TIME"
+
 # ==========================================
 # 3.5 REAL-TIME TRADE MONITOR
 # ==========================================
@@ -326,12 +385,15 @@ def check_closed_trades():
             else:
                 close_reason = f"⚙️ Broker/Auto (Code: {reason_code})"
                 
+            # --- NEW: Get exact server time the deal closed ---
+            close_time = datetime.fromtimestamp(out_deal.time, timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+            
             icon = "🟢" if profit > 0 else "🔴"
             result_text = "PROFIT" if profit > 0 else "LOSS"
             
-            # --- INJECTED: Added the 📝 Reason to Telegram ---
             close_msg = (
                 f"{icon} **TRADE CLOSED ({result_text})** {icon}\n\n"
+                f"🕒 **Server Time:** `{close_time}`\n"
                 f"💎 **Asset:** {SYMBOL}\n"
                 f"🎫 **Ticket:** `#{ticket}`\n"
                 f"📝 **Reason:** {close_reason}\n"
@@ -340,11 +402,78 @@ def check_closed_trades():
                 f"🏦 **New Equity:** `${mt5.account_info().equity:,.2f}`"
             )
             
-            # --- INJECTED: Added the Reason to the .log file ---
-            logging.info(f"Trade Closed: #{ticket} | Reason: {close_reason} | PnL: ${profit:.2f}")
+            # --- UPDATED: Injected Server Time into the log ---
+            logging.info(f"[{close_time}] Trade Closed: #{ticket} | Reason: {close_reason} | PnL: ${profit:.2f}")
             send_telegram_alert(close_msg)
             
     active_trade_tickets = current_tickets
+
+def apply_breakeven():
+    """Dynamically moves SL to Entry only after reaching 60% of the Take Profit distance."""
+    if not USE_BREAK_EVEN:
+        return
+        
+    positions = mt5.positions_get(symbol=SYMBOL)
+    if positions is None or len(positions) == 0:
+        return
+        
+    for pos in positions:
+        entry = pos.price_open
+        current = pos.price_current
+        ticket = pos.ticket
+        sl = pos.sl
+        tp = pos.tp
+        
+        # Safety check to avoid division errors
+        if tp == 0.0:
+            continue 
+            
+        # --- NEW: DYNAMIC TRIGGER MATH ---
+        # Calculate the exact dollar distance between your Entry and Take Profit
+        total_target_distance = abs(tp - entry)
+        
+        # The trigger is now dynamically set to 60% of the way to your Take Profit
+        dynamic_trigger = total_target_distance * BE_TRIGGER 
+        
+        # --- BUY TRADE LOGIC ---
+        if pos.type == mt5.ORDER_TYPE_BUY:
+            if (current - entry) >= dynamic_trigger:
+                new_sl = entry + BE_BUFFER
+                
+                if sl < new_sl: 
+                    req = {
+                        "action": mt5.TRADE_ACTION_SLTP,
+                        "symbol": SYMBOL,
+                        "position": ticket,
+                        "sl": new_sl,
+                        "tp": tp,
+                        "magic": MAGIC_NUMBER
+                    }
+                    res = mt5.order_send(req)
+                    if res.retcode == mt5.TRADE_RETCODE_DONE:
+                        srv_time = get_server_time_str()
+                        logging.info(f"[{srv_time}] 🛡️ Dynamic BE Applied to BUY #{ticket}: SL moved to {new_sl:.2f}")
+                        send_telegram_alert(f"🛡️ **DYNAMIC BREAK-EVEN** 🛡️\n\n🕒 **Time:** `{srv_time}`\n📈 **Type:** BUY\n🎫 **Ticket:** `#{ticket}`\n📏 **Milestone:** 60% to Target\n🔒 **New SL:** `{new_sl:.2f}` (+${BE_BUFFER})")
+                        
+        # --- SELL TRADE LOGIC ---
+        elif pos.type == mt5.ORDER_TYPE_SELL:
+            if (entry - current) >= dynamic_trigger:
+                new_sl = entry - BE_BUFFER
+                
+                if sl > new_sl or sl == 0.0:
+                    req = {
+                        "action": mt5.TRADE_ACTION_SLTP,
+                        "symbol": SYMBOL,
+                        "position": ticket,
+                        "sl": new_sl,
+                        "tp": tp,
+                        "magic": MAGIC_NUMBER
+                    }
+                    res = mt5.order_send(req)
+                    if res.retcode == mt5.TRADE_RETCODE_DONE:
+                        srv_time = get_server_time_str()
+                        logging.info(f"[{srv_time}] 🛡️ Dynamic BE Applied to SELL #{ticket}: SL moved to {new_sl:.2f}")
+                        send_telegram_alert(f"🛡️ **DYNAMIC BREAK-EVEN** 🛡️\n\n🕒 **Time:** `{srv_time}`\n📉 **Type:** SELL\n🎫 **Ticket:** `#{ticket}`\n📏 **Milestone:** 60% to Target\n🔒 **New SL:** `{new_sl:.2f}` (+${BE_BUFFER})")
 
 # ==========================================
 # 4. EXECUTION & BROKER ROUTING
@@ -463,8 +592,12 @@ def execute_trade(action, atr):
         )
         send_telegram_alert(fail_msg)
     else:
+        # --- NEW: Grab server time for the receipt ---
+        srv_time = get_server_time_str()
+        
         alert_msg = (
             f"🚨 **AI TRADE EXECUTED** 🚨\n\n"
+            f"🕒 **Server Time:** `{srv_time}`\n"
             f"📈 **Direction:** {direction}\n"
             f"💎 **Asset:** {SYMBOL}\n"
             f"📊 **Volume:** {lot_size} Lots\n"
@@ -476,7 +609,8 @@ def execute_trade(action, atr):
             f"🤖 *CNN-LSTM + TCN Hybrid System*"
         )
         
-        logging.info(f"$$$ {direction} EXECUTED! Ticket: {result.order} | Dir: {direction} | Asset: {SYMBOL} | Volume: {lot_size} | Entry: {price:.2f} | SL: {sl:.2f} | TP: {tp:.2f}")
+        # --- UPDATED: Injected Server Time into the log ---
+        logging.info(f"[{srv_time}] $$$ {direction} EXECUTED! Ticket: {result.order} | Dir: {direction} | Asset: {SYMBOL} | Volume: {lot_size} | Entry: {price:.2f} | SL: {sl:.2f} | TP: {tp:.2f}")
         send_telegram_alert(alert_msg)
 
 def liquidate_weekend_positions():
@@ -526,6 +660,17 @@ send_telegram_alert("✅ **AI Live Execution Script Started** ✅\n\nThe bot is 
 logging.info("[*] Starting Live AI Execution Loop (With Real-Time Monitoring)...")
 
 try:
+    # --- NEW: FLUSH OLD TELEGRAM COMMANDS ---
+    try:
+        init_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
+        init_resp = requests.get(init_url, timeout=3).json()
+        if init_resp.get("ok") and init_resp.get("result"):
+            telegram_offset = init_resp["result"][-1]["update_id"] + 1
+            logging.info("Flushed historical Telegram messages.")
+    except Exception:
+        pass
+    # ----------------------------------------
+    
     initial_positions = mt5.positions_get(symbol=SYMBOL)
     if initial_positions:
         active_trade_tickets = {p.ticket for p in initial_positions}
@@ -544,12 +689,16 @@ try:
 
         check_closed_trades()
 
+        # --- NEW: ACTIVE BREAK-EVEN MONITOR ---
+        apply_breakeven()
+        # --------------------------------------
+
         # --- NEW: WEEKEND GAP PROTECTION CHECK ---
         if WEEKEND_PROTECTION:
             latest_tick = mt5.symbol_info_tick(SYMBOL)
             if latest_tick:
                 # Convert the broker's UNIX timestamp to a readable datetime
-                srv_time = datetime.fromtimestamp(latest_tick.time)
+                srv_time = datetime.fromtimestamp(latest_tick.time, timezone.utc)
                 
                 # weekday() 4 is Friday. 0 is Monday.
                 if srv_time.weekday() == 4 and srv_time.hour >= FRIDAY_LIQ_HOUR and srv_time.minute >= FRIDAY_LIQ_MINUTE:
@@ -572,7 +721,13 @@ try:
         
         seconds_past_candle = current_time % 300
         
-        if 2 <= seconds_past_candle < 3: 
+        if 2 <= seconds_past_candle < 6: 
+            
+            # --- NEW: Check if the bot is paused before running AI ---
+            if not IS_BOT_ACTIVE:
+                logging.info("    -> Bot is currently PAUSED via Telegram. Skipping AI inference.")
+                time.sleep(2)
+                continue # Skips the rest of this loop and waits for the next candle
             
             # --- STALE CANDLE CHECK (HOLIDAY/WEEKEND PROTECTION) ---
             latest_rate = mt5.copy_rates_from_pos(SYMBOL, TIMEFRAME, 0, 1)
@@ -589,12 +744,6 @@ try:
             # -------------------------------------------------------
 
             logging.info("Processing New M5 Candle...")
-            
-            # --- NEW: Check if the bot is paused before running AI ---
-            if not IS_BOT_ACTIVE:
-                logging.info("    -> Bot is currently PAUSED via Telegram. Skipping AI inference.")
-                time.sleep(2)
-                continue # Skips the rest of this loop and waits for the next candle
 
             # --- AI INFERENCE (This only runs if IS_BOT_ACTIVE == True) ---
             input_tensor, current_atr = get_live_tensor()
@@ -610,14 +759,18 @@ try:
                 action_map = {0: "HOLD", 1: "BUY", 2: "SELL"}
                 sig_name = action_map.get(sig_a, "UNKNOWN")
 
-                logging.info(f"    -> Model A: {sig_a} ({sig_name}) | Model B Gatekeeper: {prob_b*100:.2f}%")
+                # --- NEW: Grab time for the signal log ---
+                srv_time = get_server_time_str()
+
+                # --- UPDATED: Injected Server Time ---
+                logging.info(f"    -> [{srv_time}] Model A: {sig_a} ({sig_name}) | Model B Gatekeeper: {prob_b*100:.2f}%")
                 
                 if prob_b > GATEKEEPER_THRESHOLD and sig_a in [1, 2]:
                     trade_action = 1 if sig_a == 1 else -1
-                    logging.info("    -> AI THRESHOLD MET. Initiating Trade Routing...")
+                    logging.info(f"    -> [{srv_time}] AI THRESHOLD MET. Initiating Trade Routing...")
                     execute_trade(trade_action, current_atr)
                 else:
-                    logging.info("    -> Signal Rejected/Hold. Waiting for next candle.")
+                    logging.info(f"    -> [{srv_time}] Signal Rejected/Hold. Waiting for next candle.")
                     
             time.sleep(2)
             
