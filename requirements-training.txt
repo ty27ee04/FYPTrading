@@ -1,0 +1,11 @@
+# Install CUDA-enabled PyTorch separately using the official PyTorch index.
+numpy
+pandas
+scikit-learn
+seaborn
+matplotlib
+joblib
+optuna
+onnx
+onnxscript
+onnxruntime

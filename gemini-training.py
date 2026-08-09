@@ -1,4 +1,6 @@
 import os
+import argparse
+import json
 import numpy as np
 import pandas as pd
 import torch
@@ -7,13 +9,15 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import confusion_matrix, classification_report
-from scipy.signal import savgol_filter
 import seaborn as sns
 import matplotlib.pyplot as plt
 import joblib
 import optuna
+import onnx
+import onnxruntime as ort
 import time
 from datetime import datetime
+from pathlib import Path
 
 from data_validation import validate_dataset_pair
 from strategy_config import FEATURE_COLUMNS, MODEL, STRATEGY
@@ -26,12 +30,82 @@ print(f"[*] Using device: {device}")
 torch.manual_seed(MODEL.seed)
 np.random.seed(MODEL.seed)
 
+optuna_epochs_global = 2
+artifact_directory = Path(".")
+
+
+def artifact_path(name):
+    artifact_directory.mkdir(parents=True, exist_ok=True)
+    return artifact_directory / name
+
 # ==========================================
 # 1. UTILITIES & DENOISING
 # ==========================================
 def denoise_series(series, span=5):
     """Applies Exponential Moving Average - 100% Causal (No Future Peeking)."""
     return series.ewm(span=span, adjust=False).mean()
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Train the XAUUSD classifier pipeline")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--preprocess-only",
+        action="store_true",
+        help="Validate data and print chronological split/class reports without training.",
+    )
+    mode.add_argument(
+        "--smoke-test",
+        action="store_true",
+        help="Run one Optuna trial and two epochs per model without evaluating final test data.",
+    )
+    parser.add_argument("--optuna-trials", type=int, default=30)
+    parser.add_argument("--model-a-epochs", type=int, default=100)
+    parser.add_argument("--model-b-epochs", type=int, default=100)
+    return parser.parse_args()
+
+
+def class_distribution(labels):
+    names = {0: "Hold", 1: "Buy", 2: "Sell"}
+    counts = {name: 0 for name in names.values()}
+    for label, count in zip(*np.unique(labels, return_counts=True)):
+        counts[names[int(label)]] = int(count)
+    total = max(len(labels), 1)
+    return {
+        name: {"count": count, "percent": round(count / total * 100, 2)}
+        for name, count in counts.items()
+    }
+
+
+def export_onnx_models(model_a, model_b, in_dim):
+    print("[*] Compiling Neural Networks to ONNX for deployment validation...")
+    dummy_input = torch.randn(1, MODEL.lookback, in_dim).to(device)
+    common = {
+        "export_params": True,
+        "opset_version": 18,
+        "do_constant_folding": True,
+        "input_names": ["input"],
+        "output_names": ["output"],
+        "dynamic_axes": {"input": {0: "batch_size"}, "output": {0: "batch_size"}},
+    }
+    model_a_path = artifact_path("best_model_a_live.onnx")
+    model_b_path = artifact_path("best_model_b_live.onnx")
+    torch.onnx.export(model_a, dummy_input, model_a_path, **common)
+    torch.onnx.export(model_b, dummy_input, model_b_path, **common)
+
+    sample = dummy_input.detach().cpu().numpy()
+    expected_widths = {
+        model_a_path: 3,
+        model_b_path: 2,
+    }
+    for path, expected_width in expected_widths.items():
+        model = onnx.load(path)
+        onnx.checker.check_model(model)
+        session = ort.InferenceSession(path, providers=["CPUExecutionProvider"])
+        output = session.run(None, {session.get_inputs()[0].name: sample})[0]
+        if output.shape != (1, expected_width):
+            raise RuntimeError(f"Unexpected ONNX output for {path}: {output.shape}")
+    print("[+] ONNX export and runtime validation complete.")
 
 # --- UPGRADE 1: FOCAL LOSS (Math Refined) ---
 class FocalLoss(nn.Module):
@@ -220,7 +294,7 @@ def preprocess_gold_data(
     X_meta_s = scaler.transform(meta_df[feat_cols])
     X_te_s = scaler.transform(df_te[feat_cols])
 
-    joblib.dump(scaler, 'scaler.pkl')
+    joblib.dump(scaler, artifact_path('scaler.pkl'))
     print("[*] Scaler saved successfully from DL preprocessing.")
     
     def seq_gen(data, labels):
@@ -235,11 +309,78 @@ def preprocess_gold_data(
     X_val, y_val = seq_gen(X_val_s, validation_df['label'].values)
     X_meta, y_meta = seq_gen(X_meta_s, meta_df['label'].values)
     X_te, y_te = seq_gen(X_te_s, df_te['label'].values)
+
+    metadata = {
+        "generated_at": datetime.now().astimezone().isoformat(),
+        "datasets": {
+            "development": {
+                "path": str(train_path),
+                "rows": development_report.rows,
+                "start": development_report.start.isoformat(),
+                "end": development_report.end.isoformat(),
+            },
+            "final_test": {
+                "path": str(test_path),
+                "rows": test_report.rows,
+                "start": test_report.start.isoformat(),
+                "end": test_report.end.isoformat(),
+            },
+        },
+        "configuration": {
+            "features": list(FEATURE_COLUMNS),
+            "lookback": MODEL.lookback,
+            "max_horizon": MODEL.max_horizon,
+            "purge_gap": MODEL.purge_gap,
+            "seed": MODEL.seed,
+            "take_profit_atr": STRATEGY.take_profit_atr,
+            "stop_loss_atr": STRATEGY.stop_loss_atr,
+            "gatekeeper_threshold": STRATEGY.gatekeeper_threshold,
+            "spread_penalty": STRATEGY.spread_penalty,
+        },
+        "splits": {
+            "model_a_train": {
+                "start": train_df['time'].iloc[0].isoformat(),
+                "end": train_df['time'].iloc[-1].isoformat(),
+                "sequences": len(X_tr),
+                "class_distribution": class_distribution(y_tr),
+            },
+            "model_a_validation": {
+                "start": validation_df['time'].iloc[0].isoformat(),
+                "end": validation_df['time'].iloc[-1].isoformat(),
+                "sequences": len(X_val),
+                "class_distribution": class_distribution(y_val),
+            },
+            "model_b_meta_period": {
+                "start": meta_df['time'].iloc[0].isoformat(),
+                "end": meta_df['time'].iloc[-1].isoformat(),
+                "sequences": len(X_meta),
+                "model_a_target_distribution": class_distribution(y_meta),
+            },
+            "final_test": {
+                "start": df_te['time'].iloc[0].isoformat(),
+                "end": df_te['time'].iloc[-1].isoformat(),
+                "sequences": len(X_te),
+                "labels_locked": True,
+            },
+        },
+    }
+    os.makedirs("outputs", exist_ok=True)
+    with open("outputs/model_metadata.json", "w", encoding="utf-8") as metadata_file:
+        json.dump(metadata, metadata_file, indent=2)
+
     print(
         "[*] Leakage-safe sequences: "
         f"Model A train={len(X_tr):,}, validation={len(X_val):,}, "
         f"meta={len(X_meta):,}, final test={len(X_te):,}."
     )
+    for split_name in ("model_a_train", "model_a_validation", "model_b_meta_period"):
+        split = metadata["splits"][split_name]
+        distribution = split.get("class_distribution") or split["model_a_target_distribution"]
+        print(
+            f"    {split_name}: {split['start']} -> {split['end']} | "
+            f"classes={distribution}"
+        )
+    print("[*] Final test labels remain locked until the final evaluation run.")
     return (
         X_tr,
         y_tr,
@@ -250,6 +391,7 @@ def preprocess_gold_data(
         X_te,
         y_te,
         df_te.iloc[lookback:].reset_index(drop=True),
+        metadata,
     )
 
 # ==========================================
@@ -312,7 +454,7 @@ def objective(trial):
     criterion = FocalLoss(alpha=class_weights, gamma=2.0)
     
     model.train()
-    for _ in range(2):
+    for _ in range(optuna_epochs_global):
         for bx, by in t_loader:
             bx, by = bx.to(device), by.to(device)
             optimizer.zero_grad()
@@ -460,6 +602,15 @@ def run_detailed_backtest(df, preds, initial_equity=10000, fixed_lot=0.10, pt_mu
 # 6. MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
+    args = parse_args()
+    if args.preprocess_only or args.smoke_test:
+        artifact_directory = Path("outputs/smoke")
+    if args.smoke_test:
+        args.optuna_trials = 1
+        args.model_a_epochs = 2
+        args.model_b_epochs = 2
+        optuna_epochs_global = 1
+
     script_start_time = time.time()
     start_datetime = datetime.now()
     print(f"\n[*] Pipeline Execution Started: {start_datetime.strftime('%Y-%m-%d %H:%M:%S')}\n")
@@ -475,13 +626,18 @@ if __name__ == "__main__":
             X_te,
             y_te,
             test_meta,
+            run_metadata,
         ) = preprocess_gold_data(
             "XAUUSD_M5_2Year.csv", "XAUUSD_M5_6month.csv"
         )
         in_dim_global = X_tr_f.shape[2]
     except Exception as e:
         print(f"[!] Error: {e}")
-        exit()
+        raise SystemExit(1)
+
+    if args.preprocess_only:
+        print("[+] Preprocessing-only validation completed successfully.")
+        raise SystemExit(0)
 
     t_loader = DataLoader(
         TensorDataset(torch.FloatTensor(X_tr_f), torch.LongTensor(y_tr_f)),
@@ -499,7 +655,7 @@ if __name__ == "__main__":
         direction='minimize',
         sampler=optuna.samplers.TPESampler(seed=MODEL.seed),
     )
-    study.optimize(objective, n_trials=30) # Reduced to 30 for speed with MTF features
+    study.optimize(objective, n_trials=args.optuna_trials)
     print(f"[*] Best Hyperparams: {study.best_params}")
 
     torch.cuda.empty_cache() 
@@ -517,7 +673,7 @@ if __name__ == "__main__":
 
     print("[*] Training Model A (with Focal Loss)...")
     best_val_loss = float('inf')
-    for epoch in range(100):
+    for epoch in range(args.model_a_epochs):
         model_a.train()
         for bx, by in t_loader:
             bx, by = bx.to(device), by.to(device)
@@ -535,7 +691,7 @@ if __name__ == "__main__":
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            torch.save(model_a.state_dict(), 'best_model_a.pth')
+            torch.save(model_a.state_dict(), artifact_path('best_model_a.pth'))
             print(f"[*] New Best Model A Saved (Loss: {val_loss:.4f})")
 
         stopper(val_loss)
@@ -546,7 +702,7 @@ if __name__ == "__main__":
     torch.cuda.empty_cache() 
 
     # --- PHASE 3: META-LABELING (MODEL B) ---
-    model_a.load_state_dict(torch.load('best_model_a.pth'))
+    model_a.load_state_dict(torch.load(artifact_path('best_model_a.pth')))
     model_a.eval()
     
     print("[*] Generating out-of-sample Meta-Labels for TCN in batches...")
@@ -599,7 +755,7 @@ if __name__ == "__main__":
     meta_stopper = EarlyStopping(patience=8, min_delta=0.0005)
     best_meta_loss = float('inf') 
     
-    for epoch in range(100):
+    for epoch in range(args.model_b_epochs):
         model_b.train()
         epoch_loss = 0
         for bx, by in meta_loader:
@@ -626,7 +782,7 @@ if __name__ == "__main__":
 
         if avg_validation_loss < best_meta_loss:
             best_meta_loss = avg_validation_loss
-            torch.save(model_b.state_dict(), 'best_model_b.pth')
+            torch.save(model_b.state_dict(), artifact_path('best_model_b.pth'))
             print(f"[*] Best Model B Saved (Val Loss: {avg_validation_loss:.4f})")
         
         meta_stopper(avg_validation_loss)
@@ -636,10 +792,27 @@ if __name__ == "__main__":
 
     torch.cuda.empty_cache() 
 
+    if args.smoke_test:
+        print("[*] Running held-out meta-period inference smoke check...")
+        model_a.load_state_dict(torch.load(artifact_path('best_model_a.pth')))
+        model_b.load_state_dict(torch.load(artifact_path('best_model_b.pth')))
+        model_a.eval(); model_b.eval()
+        sample = torch.FloatTensor(X_meta[-min(256, len(X_meta)):]).to(device)
+        with torch.no_grad():
+            output_a = model_a(sample)
+            output_b = model_b(sample)
+        if output_a.shape[1] != 3 or output_b.shape[1] != 2:
+            raise RuntimeError(
+                f"Unexpected smoke output shapes: Model A={output_a.shape}, Model B={output_b.shape}"
+            )
+        export_onnx_models(model_a, model_b, in_dim_global)
+        print("[+] Smoke test passed without accessing final test performance.")
+        raise SystemExit(0)
+
     # --- PHASE 4: FINAL INFERENCE (HIERARCHICAL) ---
     print("[*] Loading Best Weights for Hierarchical Backtest...")
-    model_a.load_state_dict(torch.load('best_model_a.pth'))
-    model_b.load_state_dict(torch.load('best_model_b.pth')) 
+    model_a.load_state_dict(torch.load(artifact_path('best_model_a.pth')))
+    model_b.load_state_dict(torch.load(artifact_path('best_model_b.pth')))
     model_a.eval(); model_b.eval()
     
     final_preds = []
@@ -712,26 +885,7 @@ if __name__ == "__main__":
     # ==========================================
     # 8. LIVE DEPLOYMENT EXPORT (ONNX)
     # ==========================================
-    print("[*] Compiling Neural Networks to ONNX for Live Deployment...")
-    
-    # Create a dummy input tensor matching the M5 sequence shape (Batch, Lookback, Features)
-    dummy_input = torch.randn(1, MODEL.lookback, in_dim_global).to(device)
-    
-    # Export the Base Model (CNN-LSTM-Attention)
-    torch.onnx.export(model_a, dummy_input, "best_model_a_live.onnx", 
-                      export_params=True, opset_version=18, 
-                      do_constant_folding=True, 
-                      input_names=['input'], output_names=['output'],
-                      dynamic_axes={'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}})
-                      
-    # Export the Gatekeeper Model (TCN)
-    torch.onnx.export(model_b, dummy_input, "best_model_b_live.onnx", 
-                      export_params=True, opset_version=18, 
-                      do_constant_folding=True, 
-                      input_names=['input'], output_names=['output'],
-                      dynamic_axes={'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}})
-                      
-    print("[+] ONNX export complete. Models are isolated and ready for MetaTrader5 / VPS integration.")
+    export_onnx_models(model_a, model_b, in_dim_global)
 
     print("[*] DL Execution Complete. Ready for RL pipeline.")
 

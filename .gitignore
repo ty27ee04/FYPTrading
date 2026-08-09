@@ -9,3 +9,5 @@ trading_bot.log
 *.png
 *.onnx
 *.data
+.venv-wsl/
+model_metadata.json
