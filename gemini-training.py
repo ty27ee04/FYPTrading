@@ -20,7 +20,8 @@ from datetime import datetime
 from pathlib import Path
 
 from data_validation import validate_dataset_pair
-from strategy_config import FEATURE_COLUMNS, MODEL, STRATEGY
+from strategy_config import CALIBRATION, FEATURE_COLUMNS, MODEL, STRATEGY
+from threshold_calibration import calibrate_gatekeeper_threshold, threshold_grid
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -62,6 +63,14 @@ def parse_args():
     parser.add_argument("--optuna-trials", type=int, default=30)
     parser.add_argument("--model-a-epochs", type=int, default=100)
     parser.add_argument("--model-b-epochs", type=int, default=100)
+    parser.add_argument(
+        "--unlock-final-test",
+        action="store_true",
+        help=(
+            "Evaluate the locked six-month test after training and calibration. "
+            "Omit this flag while tuning or reviewing the calibration result."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -388,6 +397,7 @@ def preprocess_gold_data(
         y_val,
         X_meta,
         y_meta,
+        meta_df.iloc[lookback:].reset_index(drop=True),
         X_te,
         y_te,
         df_te.iloc[lookback:].reset_index(drop=True),
@@ -623,6 +633,7 @@ if __name__ == "__main__":
             y_val_a,
             X_meta,
             y_meta_target,
+            meta_trade_frame,
             X_te,
             y_te,
             test_meta,
@@ -725,19 +736,43 @@ if __name__ == "__main__":
     
     torch.cuda.empty_cache()
 
-    meta_split = int(len(X_meta) * 0.70)
-    meta_validation_start = meta_split + MODEL.purge_gap
-    if meta_validation_start >= len(X_meta):
-        raise ValueError("Meta period is too short for purged train/validation sets")
+    meta_train_end = int(len(X_meta) * CALIBRATION.model_b_train_fraction)
+    meta_validation_end = int(
+        len(X_meta)
+        * (
+            CALIBRATION.model_b_train_fraction
+            + CALIBRATION.model_b_validation_fraction
+        )
+    )
+    meta_validation_start = meta_train_end + MODEL.purge_gap
+    meta_calibration_start = meta_validation_end + MODEL.purge_gap
+    if not (
+        meta_train_end < meta_validation_start < meta_validation_end
+        < meta_calibration_start < len(X_meta)
+    ):
+        raise ValueError(
+            "Meta period is too short for purged Model B train, validation, "
+            "and calibration sets"
+        )
 
     meta_train_dataset = TensorDataset(
-        torch.FloatTensor(X_meta[:meta_split]),
-        torch.LongTensor(meta_y[:meta_split]),
+        torch.FloatTensor(X_meta[:meta_train_end][meta_preds[:meta_train_end] != 0]),
+        torch.LongTensor(meta_y[:meta_train_end][meta_preds[:meta_train_end] != 0]),
     )
     meta_validation_dataset = TensorDataset(
-        torch.FloatTensor(X_meta[meta_validation_start:]),
-        torch.LongTensor(meta_y[meta_validation_start:]),
+        torch.FloatTensor(
+            X_meta[meta_validation_start:meta_validation_end][
+                meta_preds[meta_validation_start:meta_validation_end] != 0
+            ]
+        ),
+        torch.LongTensor(
+            meta_y[meta_validation_start:meta_validation_end][
+                meta_preds[meta_validation_start:meta_validation_end] != 0
+            ]
+        ),
     )
+    if min(len(meta_train_dataset), len(meta_validation_dataset)) == 0:
+        raise ValueError("Model A produced no eligible signals for Model B training")
     meta_loader = DataLoader(meta_train_dataset, batch_size=128, shuffle=True)
     meta_validation_loader = DataLoader(
         meta_validation_dataset,
@@ -792,6 +827,122 @@ if __name__ == "__main__":
 
     torch.cuda.empty_cache() 
 
+    # --- PHASE 4: GATEKEEPER THRESHOLD CALIBRATION ---
+    # This final meta tail is not used to train Model A, train Model B, or select
+    # either checkpoint. It is the only period allowed to select the live cutoff.
+    print("[*] Calibrating Model B threshold on the untouched meta-period tail...")
+    model_b.load_state_dict(torch.load(artifact_path('best_model_b.pth')))
+    model_b.eval()
+    calibration_probabilities = []
+    calibration_loader = DataLoader(
+        TensorDataset(torch.FloatTensor(X_meta[meta_calibration_start:])),
+        batch_size=512,
+        shuffle=False,
+    )
+    with torch.no_grad():
+        for batch in calibration_loader:
+            bx = batch[0].to(device)
+            probabilities = F.softmax(model_b(bx), dim=1)[:, 1]
+            calibration_probabilities.extend(probabilities.cpu().numpy())
+
+    calibration_signals = meta_preds[meta_calibration_start:]
+    calibration_labels = meta_y[meta_calibration_start:]
+    calibration_frame = meta_trade_frame.iloc[meta_calibration_start:].reset_index(drop=True)
+    run_metadata["splits"]["model_b_train"] = {
+        "start": meta_trade_frame["time"].iloc[0].isoformat(),
+        "end": meta_trade_frame["time"].iloc[meta_train_end - 1].isoformat(),
+        "eligible_signal_sequences": len(meta_train_dataset),
+    }
+    run_metadata["splits"]["model_b_validation"] = {
+        "start": meta_trade_frame["time"].iloc[meta_validation_start].isoformat(),
+        "end": meta_trade_frame["time"].iloc[meta_validation_end - 1].isoformat(),
+        "eligible_signal_sequences": len(meta_validation_dataset),
+    }
+    run_metadata["splits"]["threshold_calibration"] = {
+        "start": calibration_frame["time"].iloc[0].isoformat(),
+        "end": calibration_frame["time"].iloc[-1].isoformat(),
+        "sequences": len(calibration_frame),
+        "eligible_signal_sequences": int((calibration_signals != 0).sum()),
+    }
+
+    def evaluate_calibration_trading(gated_signals):
+        _, _, threshold_stats = run_detailed_backtest(
+            calibration_frame,
+            gated_signals,
+            pt_mult=STRATEGY.take_profit_atr,
+            sl_mult=STRATEGY.stop_loss_atr,
+            max_horizon=MODEL.max_horizon,
+            spread_penalty=STRATEGY.spread_penalty,
+        )
+        return {
+            "net_profit_fixed": float(
+                threshold_stats["final_fixed"] - threshold_stats["initial"]
+            ),
+            "max_drawdown_fixed_percent": float(
+                threshold_stats["max_dd_fixed"] * 100.0
+            ),
+            "sharpe_fixed": float(threshold_stats["sharpe_fixed"]),
+            "executed_trades": int(threshold_stats["num_trades"]),
+            "win_rate_percent": float(threshold_stats["win_rate"]),
+        }
+
+    calibration_result = calibrate_gatekeeper_threshold(
+        calibration_signals,
+        np.asarray(calibration_probabilities),
+        calibration_labels,
+        threshold_grid(CALIBRATION.minimum, CALIBRATION.maximum, CALIBRATION.step),
+        minimum_accepted_signals=CALIBRATION.minimum_accepted_signals,
+        minimum_signal_coverage=CALIBRATION.minimum_signal_coverage,
+        wilson_z=CALIBRATION.wilson_z,
+        trading_evaluator=evaluate_calibration_trading,
+    )
+    selected_threshold = calibration_result["selected_threshold"]
+    calibration_result.update(
+        {
+            "generated_at": datetime.now().astimezone().isoformat(),
+            "calibration_period": {
+                "start": calibration_frame["time"].iloc[0].isoformat(),
+                "end": calibration_frame["time"].iloc[-1].isoformat(),
+                "sequences": len(calibration_frame),
+            },
+            "final_test_accessed": False,
+            "selection_note": (
+                "Trading metrics are audit diagnostics only and do not determine "
+                "the selected threshold."
+            ),
+        }
+    )
+    calibration_json_path = artifact_path("threshold_calibration.json")
+    with calibration_json_path.open("w", encoding="utf-8") as calibration_file:
+        json.dump(calibration_result, calibration_file, indent=2)
+    calibration_rows = []
+    for result_row in calibration_result["threshold_results"]:
+        flat_row = {key: value for key, value in result_row.items() if key != "trading"}
+        flat_row.update(result_row.get("trading", {}))
+        calibration_rows.append(flat_row)
+    pd.DataFrame(calibration_rows).to_csv(
+        artifact_path("threshold_calibration.csv"), index=False
+    )
+    run_metadata["threshold_calibration"] = {
+        key: calibration_result[key]
+        for key in (
+            "selected_threshold",
+            "selection_rule",
+            "constraints",
+            "calibration_period",
+        )
+    }
+    with open("outputs/model_metadata.json", "w", encoding="utf-8") as metadata_file:
+        json.dump(run_metadata, metadata_file, indent=2)
+    selected_metrics = calibration_result["selected_metrics"]
+    print(
+        "[+] Selected gatekeeper threshold "
+        f"{selected_threshold:.2f} | accepted={selected_metrics['accepted_signals']:,} | "
+        f"coverage={selected_metrics['signal_coverage']:.2%} | "
+        f"precision={selected_metrics['accepted_precision']:.2%} | "
+        f"Wilson lower bound={selected_metrics['precision_wilson_lower_95']:.2%}"
+    )
+
     if args.smoke_test:
         print("[*] Running held-out meta-period inference smoke check...")
         model_a.load_state_dict(torch.load(artifact_path('best_model_a.pth')))
@@ -809,7 +960,15 @@ if __name__ == "__main__":
         print("[+] Smoke test passed without accessing final test performance.")
         raise SystemExit(0)
 
-    # --- PHASE 4: FINAL INFERENCE (HIERARCHICAL) ---
+    if not args.unlock_final_test:
+        export_onnx_models(model_a, model_b, in_dim_global)
+        print(
+            "[+] Training and threshold calibration complete. The final test remains "
+            "locked; review threshold_calibration.json before Phase 6."
+        )
+        raise SystemExit(0)
+
+    # --- PHASE 6: EXPLICITLY UNLOCKED FINAL INFERENCE (HIERARCHICAL) ---
     print("[*] Loading Best Weights for Hierarchical Backtest...")
     model_a.load_state_dict(torch.load(artifact_path('best_model_a.pth')))
     model_b.load_state_dict(torch.load(artifact_path('best_model_b.pth')))
@@ -825,7 +984,7 @@ if __name__ == "__main__":
             sig_a = torch.argmax(model_a(bx), dim=1).cpu().numpy()
             prob_b = F.softmax(model_b(bx), dim=1)[:, 1].cpu().numpy()
             
-            sig_final = np.where(prob_b > STRATEGY.gatekeeper_threshold, sig_a, 0)
+            sig_final = np.where(prob_b >= selected_threshold, sig_a, 0)
             final_preds.extend(sig_final)
 
     test_preds = np.array(final_preds)

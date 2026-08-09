@@ -1,6 +1,8 @@
 """Authoritative configuration shared by training, backtesting, and live inference."""
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 
 
 FEATURE_COLUMNS = (
@@ -38,5 +40,35 @@ class StrategyConfig:
     spread_penalty: float = 0.20
 
 
+@dataclass(frozen=True)
+class ThresholdCalibrationConfig:
+    """Rules fixed before looking at the locked final-test period."""
+
+    # Model B scores rank signal reliability; they are not assumed to be
+    # calibrated probabilities or centred on 0.50.
+    minimum: float = 0.05
+    maximum: float = 0.95
+    step: float = 0.01
+    minimum_accepted_signals: int = 100
+    minimum_signal_coverage: float = 0.05
+    wilson_z: float = 1.96
+    model_b_train_fraction: float = 0.60
+    model_b_validation_fraction: float = 0.20
+
+
+def load_gatekeeper_threshold(path="threshold_calibration.json") -> float:
+    """Load a frozen production cutoff, falling back to the configured default."""
+    calibration_path = Path(path)
+    if not calibration_path.exists():
+        return STRATEGY.gatekeeper_threshold
+
+    with calibration_path.open(encoding="utf-8") as calibration_file:
+        selected = float(json.load(calibration_file)["selected_threshold"])
+    if not 0.0 <= selected <= 1.0:
+        raise ValueError(f"Invalid calibrated gatekeeper threshold: {selected}")
+    return selected
+
+
 MODEL = ModelConfig()
 STRATEGY = StrategyConfig()
+CALIBRATION = ThresholdCalibrationConfig()

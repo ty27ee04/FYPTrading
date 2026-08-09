@@ -8,7 +8,12 @@ from torch.utils.data import DataLoader, TensorDataset
 import joblib
 import matplotlib.pyplot as plt
 
-from strategy_config import FEATURE_COLUMNS, MODEL, STRATEGY
+from strategy_config import (
+    FEATURE_COLUMNS,
+    MODEL,
+    STRATEGY,
+    load_gatekeeper_threshold,
+)
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -258,6 +263,7 @@ if __name__ == "__main__":
     model_a.eval(); model_b.eval()
 
     print("[*] Generating AI Predictions...")
+    gatekeeper_threshold = load_gatekeeper_threshold()
     test_loader = DataLoader(TensorDataset(torch.FloatTensor(X_te)), batch_size=256, shuffle=False)
     final_preds = []
     
@@ -266,7 +272,7 @@ if __name__ == "__main__":
             bx = batch[0].to(device)
             sig_a = torch.argmax(model_a(bx), dim=1).cpu().numpy()
             prob_b = F.softmax(model_b(bx), dim=1)[:, 1].cpu().numpy()
-            sig_final = np.where(prob_b > STRATEGY.gatekeeper_threshold, sig_a, 0)
+            sig_final = np.where(prob_b >= gatekeeper_threshold, sig_a, 0)
             final_preds.extend(sig_final)
 
     test_preds = np.array(final_preds)

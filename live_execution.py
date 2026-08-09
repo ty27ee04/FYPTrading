@@ -11,7 +11,7 @@ import traceback
 import os
 from dotenv import load_dotenv
 
-from strategy_config import FEATURE_COLUMNS, MODEL, STRATEGY
+from strategy_config import FEATURE_COLUMNS, MODEL, STRATEGY, load_gatekeeper_threshold
 
 # ==========================================
 # 0. SYSTEM LOGGING SETUP
@@ -51,7 +51,7 @@ SL_MULT = STRATEGY.stop_loss_atr
 MAGIC_NUMBER = 2026
 
 # --- AI Settings ---
-GATEKEEPER_THRESHOLD = STRATEGY.gatekeeper_threshold
+GATEKEEPER_THRESHOLD = load_gatekeeper_threshold()
 IS_BOT_ACTIVE = True               # <--- NEW: Master switch for Pause/Resume
 WEEKEND_PROTECTION = True          # <--- NEW: Enable Friday Flat protocol
 FRIDAY_LIQ_HOUR = 23               # <--- NEW: MT5 Server Hour to liquidate (23 = 11 PM)

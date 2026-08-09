@@ -28,6 +28,7 @@ def main() -> int:
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--preprocess-only", action="store_true")
     mode.add_argument("--smoke-test", action="store_true")
+    parser.add_argument("--unlock-final-test", action="store_true")
     args = parser.parse_args()
 
     command = [sys.executable, "-u", "gemini-training.py"]
@@ -35,6 +36,8 @@ def main() -> int:
         command.append("--preprocess-only")
     elif args.smoke_test:
         command.append("--smoke-test")
+    if args.unlock_final_test:
+        command.append("--unlock-final-test")
 
     write_status("running", command=command, log=str(LOG_PATH))
     with LOG_PATH.open("w", encoding="utf-8") as log:
