@@ -15,13 +15,16 @@ import optuna
 import time
 from datetime import datetime
 
+from data_validation import validate_dataset_pair
+from strategy_config import FEATURE_COLUMNS, MODEL, STRATEGY
+
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"[*] Using device: {device}")
 
 # Set random seed for reproducibility
-torch.manual_seed(42)
-np.random.seed(42)
+torch.manual_seed(MODEL.seed)
+np.random.seed(MODEL.seed)
 
 # ==========================================
 # 1. UTILITIES & DENOISING
@@ -77,7 +80,20 @@ class EarlyStopping:
 # 2. PREPROCESSING 
 # ==========================================
 # --- UPGRADE 2: ASYMMETRIC BARRIERS (pt_mult=3.0, sl_mult=2.0) ---
-def preprocess_gold_data(train_path, test_path, lookback=60, max_horizon=24, pt_mult=3.0, sl_mult=2.0):
+def preprocess_gold_data(
+    train_path,
+    test_path,
+    lookback=MODEL.lookback,
+    max_horizon=MODEL.max_horizon,
+    pt_mult=STRATEGY.take_profit_atr,
+    sl_mult=STRATEGY.stop_loss_atr,
+):
+    development_report, test_report = validate_dataset_pair(train_path, test_path)
+    print(
+        f"[*] Dataset boundary verified: development ends {development_report.end}; "
+        f"test starts {test_report.start}."
+    )
+
     def apply_tbm(path):
         if not os.path.exists(path): return None
         df = pd.read_csv(path)
@@ -124,17 +140,21 @@ def preprocess_gold_data(train_path, test_path, lookback=60, max_horizon=24, pt_
 
         # Triple Barrier Labeling (Now mathematically asymmetric)
         # Triple Barrier Labeling (Corrected Asymmetric Logic)
-        c, h, l, a = df['close'].values, df['high'].values, df['low'].values, df['atr'].values
+        o = df['open'].values
+        h = df['high'].values
+        l = df['low'].values
+        a = df['atr'].values
         labels = np.zeros(len(df), dtype=int)
         
         for i in range(len(df) - max_horizon):
-            # BUY SETUP: Profit Target = UP (+3 ATR), Stop Loss = DOWN (-2 ATR)
-            buy_pt = c[i] + (pt_mult * a[i])
-            buy_sl = c[i] - (sl_mult * a[i])
+            # Features are known at candle i close; execution occurs at candle i+1 open.
+            # Anchor barriers to that tradable entry price, never to a future close.
+            entry = o[i + 1]
+            buy_pt = entry + (pt_mult * a[i])
+            buy_sl = entry - (sl_mult * a[i])
             
-            # SELL SETUP: Profit Target = DOWN (-3 ATR), Stop Loss = UP (+2 ATR)
-            sell_pt = c[i] - (pt_mult * a[i])
-            sell_sl = c[i] + (sl_mult * a[i])
+            sell_pt = entry - (pt_mult * a[i])
+            sell_sl = entry + (sl_mult * a[i])
             
             # Find the exact moments the barriers are touched
             hit_buy_pt = np.where(h[i+1:i+1+max_horizon] >= buy_pt)[0]
@@ -176,11 +196,28 @@ def preprocess_gold_data(train_path, test_path, lookback=60, max_horizon=24, pt_
 
     df_tr, df_te = apply_tbm(train_path), apply_tbm(test_path)
     
-    # Feature list updated with MTF context
-    feat_cols = ['log_ret', 'rsi_n', 'mfi_n', 'atr_p', 'vol_filter', 'sin_h', 'cos_h', 'h1_trend_slope', 'rsi_h1']
-    
+    feat_cols = list(FEATURE_COLUMNS)
+
+    # Keep Model A fitting, Model A selection, and meta-label generation
+    # chronologically isolated. Purges prevent labels/lookbacks crossing boundaries.
+    train_end = int(len(df_tr) * MODEL.model_a_train_fraction)
+    validation_end = int(
+        len(df_tr)
+        * (MODEL.model_a_train_fraction + MODEL.model_a_validation_fraction)
+    )
+    purge = MODEL.purge_gap
+    train_df = df_tr.iloc[:train_end].copy()
+    validation_df = df_tr.iloc[train_end + purge:validation_end].copy()
+    meta_df = df_tr.iloc[validation_end + purge:].copy()
+
+    minimum_rows = lookback + 1
+    if min(len(train_df), len(validation_df), len(meta_df)) <= minimum_rows:
+        raise ValueError("Development dataset is too short for purged chronological splits")
+
     scaler = StandardScaler()
-    X_tr_s = scaler.fit_transform(df_tr[feat_cols])
+    X_tr_s = scaler.fit_transform(train_df[feat_cols])
+    X_val_s = scaler.transform(validation_df[feat_cols])
+    X_meta_s = scaler.transform(meta_df[feat_cols])
     X_te_s = scaler.transform(df_te[feat_cols])
 
     joblib.dump(scaler, 'scaler.pkl')
@@ -189,12 +226,31 @@ def preprocess_gold_data(train_path, test_path, lookback=60, max_horizon=24, pt_
     def seq_gen(data, labels):
         X, y = [], []
         for i in range(len(data) - lookback):
-            X.append(data[i:i+lookback]); y.append(labels[i+lookback])
+            # The sequence ends on the signal candle. Its label describes a trade
+            # entered at the following candle's open, which is test_meta row i.
+            X.append(data[i:i+lookback]); y.append(labels[i+lookback-1])
         return np.array(X), np.array(y)
     
-    X_tr, y_tr = seq_gen(X_tr_s, df_tr['label'].values)
+    X_tr, y_tr = seq_gen(X_tr_s, train_df['label'].values)
+    X_val, y_val = seq_gen(X_val_s, validation_df['label'].values)
+    X_meta, y_meta = seq_gen(X_meta_s, meta_df['label'].values)
     X_te, y_te = seq_gen(X_te_s, df_te['label'].values)
-    return X_tr, y_tr, X_te, y_te, df_te.iloc[lookback:].reset_index(drop=True)
+    print(
+        "[*] Leakage-safe sequences: "
+        f"Model A train={len(X_tr):,}, validation={len(X_val):,}, "
+        f"meta={len(X_meta):,}, final test={len(X_te):,}."
+    )
+    return (
+        X_tr,
+        y_tr,
+        X_val,
+        y_val,
+        X_meta,
+        y_meta,
+        X_te,
+        y_te,
+        df_te.iloc[lookback:].reset_index(drop=True),
+    )
 
 # ==========================================
 # 3. MODELS: BASE (CNN-LSTM) & META (TCN)
@@ -409,27 +465,40 @@ if __name__ == "__main__":
     print(f"\n[*] Pipeline Execution Started: {start_datetime.strftime('%Y-%m-%d %H:%M:%S')}\n")
 
     try:
-        X_tr_f, y_tr_f, X_te, y_te, test_meta = preprocess_gold_data(
-        "XAUUSD_M5_2Year.csv", "XAUUSD_M5_6month.csv"
+        (
+            X_tr_f,
+            y_tr_f,
+            X_val_a,
+            y_val_a,
+            X_meta,
+            y_meta_target,
+            X_te,
+            y_te,
+            test_meta,
+        ) = preprocess_gold_data(
+            "XAUUSD_M5_2Year.csv", "XAUUSD_M5_6month.csv"
         )
         in_dim_global = X_tr_f.shape[2]
     except Exception as e:
         print(f"[!] Error: {e}")
         exit()
 
-    dataset = TensorDataset(torch.FloatTensor(X_tr_f), torch.LongTensor(y_tr_f))
-
-    purge_gap = 24  
-    train_idx = int(0.8 * len(dataset))
-
-    t_set = torch.utils.data.Subset(dataset, range(0, train_idx - purge_gap))
-    v_set = torch.utils.data.Subset(dataset, range(train_idx, len(dataset)))
-    
-    t_loader = DataLoader(t_set, batch_size=128, shuffle=True)
-    v_loader = DataLoader(v_set, batch_size=128, shuffle=False)
+    t_loader = DataLoader(
+        TensorDataset(torch.FloatTensor(X_tr_f), torch.LongTensor(y_tr_f)),
+        batch_size=128,
+        shuffle=True,
+    )
+    v_loader = DataLoader(
+        TensorDataset(torch.FloatTensor(X_val_a), torch.LongTensor(y_val_a)),
+        batch_size=128,
+        shuffle=False,
+    )
 
     print("[*] Starting Optuna Study...")
-    study = optuna.create_study(direction='minimize')
+    study = optuna.create_study(
+        direction='minimize',
+        sampler=optuna.samplers.TPESampler(seed=MODEL.seed),
+    )
     study.optimize(objective, n_trials=30) # Reduced to 30 for speed with MTF features
     print(f"[*] Best Hyperparams: {study.best_params}")
 
@@ -480,29 +549,53 @@ if __name__ == "__main__":
     model_a.load_state_dict(torch.load('best_model_a.pth'))
     model_a.eval()
     
-    print("[*] Generating Meta-Labels for TCN in batches...")
-    train_preds_list = []
-    meta_label_gen_loader = DataLoader(TensorDataset(torch.FloatTensor(X_tr_f)), batch_size=512, shuffle=False)
+    print("[*] Generating out-of-sample Meta-Labels for TCN in batches...")
+    meta_preds_list = []
+    meta_label_gen_loader = DataLoader(
+        TensorDataset(torch.FloatTensor(X_meta)),
+        batch_size=512,
+        shuffle=False,
+    )
     
     with torch.no_grad():
         for batch in meta_label_gen_loader:
             bx = batch[0].to(device)
             logits = model_a(bx)
             preds = torch.argmax(logits, dim=1).cpu().numpy()
-            train_preds_list.extend(preds)
+            meta_preds_list.extend(preds)
     
-    train_preds = np.array(train_preds_list)
-    meta_y = ((train_preds == y_tr_f) & (train_preds != 0)).astype(int)
+    meta_preds = np.array(meta_preds_list)
+    meta_y = ((meta_preds == y_meta_target) & (meta_preds != 0)).astype(int)
     
     torch.cuda.empty_cache()
 
-    meta_dataset = TensorDataset(torch.FloatTensor(X_tr_f), torch.LongTensor(meta_y))
-    meta_loader = DataLoader(meta_dataset, batch_size=128, shuffle=True)
+    meta_split = int(len(X_meta) * 0.70)
+    meta_validation_start = meta_split + MODEL.purge_gap
+    if meta_validation_start >= len(X_meta):
+        raise ValueError("Meta period is too short for purged train/validation sets")
+
+    meta_train_dataset = TensorDataset(
+        torch.FloatTensor(X_meta[:meta_split]),
+        torch.LongTensor(meta_y[:meta_split]),
+    )
+    meta_validation_dataset = TensorDataset(
+        torch.FloatTensor(X_meta[meta_validation_start:]),
+        torch.LongTensor(meta_y[meta_validation_start:]),
+    )
+    meta_loader = DataLoader(meta_train_dataset, batch_size=128, shuffle=True)
+    meta_validation_loader = DataLoader(
+        meta_validation_dataset,
+        batch_size=128,
+        shuffle=False,
+    )
     
     model_b = ModelB_TCN(in_dim_global).to(device)
     optimizer_b = torch.optim.Adam(model_b.parameters(), lr=0.001)
     
-    print(f"[*] Training TCN Gatekeeper (Model B) | Meta-Samples: {len(meta_y)}")
+    print(
+        "[*] Training TCN Gatekeeper (Model B) | "
+        f"Train={len(meta_train_dataset):,}, validation={len(meta_validation_dataset):,}"
+    )
     meta_stopper = EarlyStopping(patience=8, min_delta=0.0005)
     best_meta_loss = float('inf') 
     
@@ -517,15 +610,26 @@ if __name__ == "__main__":
             optimizer_b.step()
             epoch_loss += loss.item()
         
-        avg_loss = epoch_loss / len(meta_loader)
-        print(f"Epoch {epoch+1} | Meta Loss: {avg_loss:.4f}")
+        avg_train_loss = epoch_loss / len(meta_loader)
 
-        if avg_loss < best_meta_loss:
-            best_meta_loss = avg_loss
+        model_b.eval()
+        validation_loss = 0.0
+        with torch.no_grad():
+            for bx, by in meta_validation_loader:
+                bx, by = bx.to(device), by.to(device)
+                validation_loss += F.cross_entropy(model_b(bx), by).item()
+        avg_validation_loss = validation_loss / len(meta_validation_loader)
+        print(
+            f"Epoch {epoch+1} | Meta Train Loss: {avg_train_loss:.4f} | "
+            f"Meta Val Loss: {avg_validation_loss:.4f}"
+        )
+
+        if avg_validation_loss < best_meta_loss:
+            best_meta_loss = avg_validation_loss
             torch.save(model_b.state_dict(), 'best_model_b.pth')
-            print(f"[*] Best Model B Saved (Loss: {avg_loss:.4f})")
+            print(f"[*] Best Model B Saved (Val Loss: {avg_validation_loss:.4f})")
         
-        meta_stopper(avg_loss)
+        meta_stopper(avg_validation_loss)
         if meta_stopper.early_stop:
             print(f"[*] Model B Early Stopping at Epoch {epoch}")
             break
@@ -548,7 +652,7 @@ if __name__ == "__main__":
             sig_a = torch.argmax(model_a(bx), dim=1).cpu().numpy()
             prob_b = F.softmax(model_b(bx), dim=1)[:, 1].cpu().numpy()
             
-            sig_final = np.where(prob_b > 0.52, sig_a, 0)
+            sig_final = np.where(prob_b > STRATEGY.gatekeeper_threshold, sig_a, 0)
             final_preds.extend(sig_final)
 
     test_preds = np.array(final_preds)
@@ -565,7 +669,14 @@ if __name__ == "__main__":
     plt.ylabel('Original Signal (Market Actual)')
     plt.savefig('fyp_cm.png')
 
-    res_df, trade_log, stats = run_detailed_backtest(test_meta, test_preds)
+    res_df, trade_log, stats = run_detailed_backtest(
+        test_meta,
+        test_preds,
+        pt_mult=STRATEGY.take_profit_atr,
+        sl_mult=STRATEGY.stop_loss_atr,
+        max_horizon=MODEL.max_horizon,
+        spread_penalty=STRATEGY.spread_penalty,
+    )
 
     start_d, end_d = res_df['time'].iloc[0], res_df['time'].iloc[-1]
     duration_months = (end_d - start_d).days / 30.44
@@ -604,7 +715,7 @@ if __name__ == "__main__":
     print("[*] Compiling Neural Networks to ONNX for Live Deployment...")
     
     # Create a dummy input tensor matching the M5 sequence shape (Batch, Lookback, Features)
-    dummy_input = torch.randn(1, 60, in_dim_global).to(device)
+    dummy_input = torch.randn(1, MODEL.lookback, in_dim_global).to(device)
     
     # Export the Base Model (CNN-LSTM-Attention)
     torch.onnx.export(model_a, dummy_input, "best_model_a_live.onnx", 

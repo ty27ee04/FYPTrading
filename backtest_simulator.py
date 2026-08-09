@@ -8,6 +8,8 @@ from torch.utils.data import DataLoader, TensorDataset
 import joblib
 import matplotlib.pyplot as plt
 
+from strategy_config import FEATURE_COLUMNS, MODEL, STRATEGY
+
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"[*] Initializing Simulator on device: {device}")
@@ -62,7 +64,13 @@ class ModelB_TCN(nn.Module):
 def denoise_series(series, span=5):
     return series.ewm(span=span, adjust=False).mean()
 
-def load_and_preprocess_test_data(test_path, lookback=60, max_horizon=24, pt_mult=3.0, sl_mult=2.0):
+def load_and_preprocess_test_data(
+    test_path,
+    lookback=MODEL.lookback,
+    max_horizon=MODEL.max_horizon,
+    pt_mult=STRATEGY.take_profit_atr,
+    sl_mult=STRATEGY.stop_loss_atr,
+):
     if not os.path.exists(test_path): 
         raise FileNotFoundError(f"Test file {test_path} not found.")
         
@@ -104,7 +112,7 @@ def load_and_preprocess_test_data(test_path, lookback=60, max_horizon=24, pt_mul
     df = df.dropna().reset_index(drop=True)
     
     # Load existing scaler (Do NOT fit a new one)
-    feat_cols = ['log_ret', 'rsi_n', 'mfi_n', 'atr_p', 'vol_filter', 'sin_h', 'cos_h', 'h1_trend_slope', 'rsi_h1']
+    feat_cols = list(FEATURE_COLUMNS)
     scaler = joblib.load('scaler.pkl')
     X_te_s = scaler.transform(df[feat_cols])
     
@@ -119,9 +127,12 @@ def load_and_preprocess_test_data(test_path, lookback=60, max_horizon=24, pt_mul
 # ==========================================
 # 3. UPGRADED BACKTEST ENGINE
 # ==========================================
-def run_scenario_backtest(df, preds, scenario_name, initial_equity, strategy_type, 
+def run_scenario_backtest(df, preds, scenario_name, initial_equity, strategy_type,
                           fixed_lot=0.01, dyn_step_equity=100, dyn_step_lot=0.01, 
-                          pt_mult=3.0, sl_mult=2.0, max_horizon=24, spread_penalty=0.20):
+                          pt_mult=STRATEGY.take_profit_atr,
+                          sl_mult=STRATEGY.stop_loss_atr,
+                          max_horizon=MODEL.max_horizon,
+                          spread_penalty=STRATEGY.spread_penalty):
     """
     strategy_type: 'FIXED' or 'DYNAMIC'
     dyn_step_equity & dyn_step_lot: Example: for every $100, trade 0.01 lots.
@@ -255,7 +266,7 @@ if __name__ == "__main__":
             bx = batch[0].to(device)
             sig_a = torch.argmax(model_a(bx), dim=1).cpu().numpy()
             prob_b = F.softmax(model_b(bx), dim=1)[:, 1].cpu().numpy()
-            sig_final = np.where(prob_b > 0.52, sig_a, 0)
+            sig_final = np.where(prob_b > STRATEGY.gatekeeper_threshold, sig_a, 0)
             final_preds.extend(sig_final)
 
     test_preds = np.array(final_preds)

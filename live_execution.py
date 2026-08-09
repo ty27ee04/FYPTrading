@@ -11,6 +11,8 @@ import traceback
 import os
 from dotenv import load_dotenv
 
+from strategy_config import FEATURE_COLUMNS, MODEL, STRATEGY
+
 # ==========================================
 # 0. SYSTEM LOGGING SETUP
 # ==========================================
@@ -30,7 +32,7 @@ logging.getLogger("urllib3").setLevel(logging.WARNING)
 # ==========================================
 SYMBOL = "XAUUSD.m"  # Update this to match your exact broker symbol
 TIMEFRAME = mt5.TIMEFRAME_M5
-LOOKBACK = 60
+LOOKBACK = MODEL.lookback
 REQUIRED_CANDLES = 400 
 
 # --- Strategy Controls ---
@@ -44,12 +46,12 @@ DYN_STEP_LOT = 0.01                # Active if STRATEGY_TYPE = "DYNAMIC" (...Tra
 MAX_LOT_SAFETY = 50.0              # Broker Maximum Lot Cap
 
 # --- Risk Management ---
-TP_MULT = 3.0
-SL_MULT = 3.0
+TP_MULT = STRATEGY.take_profit_atr
+SL_MULT = STRATEGY.stop_loss_atr
 MAGIC_NUMBER = 2026
 
 # --- AI Settings ---
-GATEKEEPER_THRESHOLD = 0.52        # Default TCN Confidence Threshold (52%)
+GATEKEEPER_THRESHOLD = STRATEGY.gatekeeper_threshold
 IS_BOT_ACTIVE = True               # <--- NEW: Master switch for Pause/Resume
 WEEKEND_PROTECTION = True          # <--- NEW: Enable Friday Flat protocol
 FRIDAY_LIQ_HOUR = 23               # <--- NEW: MT5 Server Hour to liquidate (23 = 11 PM)
@@ -335,7 +337,7 @@ def get_live_tensor():
     
     live_atr = df['atr'].iloc[-1]
     
-    feat_cols = ['log_ret', 'rsi_n', 'mfi_n', 'atr_p', 'vol_filter', 'sin_h', 'cos_h', 'h1_trend_slope', 'rsi_h1']
+    feat_cols = list(FEATURE_COLUMNS)
     X_scaled = scaler.transform(df[feat_cols])
     
     live_sequence = X_scaled[-LOOKBACK:]
