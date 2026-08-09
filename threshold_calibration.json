@@ -1,0 +1,1772 @@
+{
+  "selected_threshold": 0.26,
+  "selection_rule": "maximum_precision_wilson_lower_95",
+  "constraints": {
+    "minimum_accepted_signals": 100,
+    "minimum_signal_coverage": 0.05,
+    "minimum_precision": "ungated_model_a_precision",
+    "wilson_z": 1.96
+  },
+  "eligible_signals": 4131,
+  "eligible_correct_signals": 1286,
+  "ungated_precision": 0.3113047688211087,
+  "ungated_precision_wilson_lower_95": 0.2973655473199249,
+  "selected_metrics": {
+    "threshold": 0.26,
+    "eligible_signals": 4131,
+    "accepted_signals": 480,
+    "correct_accepted_signals": 196,
+    "signal_coverage": 0.11619462599854757,
+    "accepted_precision": 0.4083333333333333,
+    "precision_lift_over_ungated": 0.09702856451222464,
+    "correct_signal_recall": 0.15241057542768274,
+    "precision_wilson_lower_95": 0.36525748791677226,
+    "meets_constraints": true,
+    "trading": {
+      "net_profit_fixed": 1417.3428571428485,
+      "max_drawdown_fixed_percent": -7.09223174339066,
+      "sharpe_fixed": 6.290424234933419,
+      "executed_trades": 97,
+      "win_rate_percent": 49.48453608247423
+    }
+  },
+  "threshold_results": [
+    {
+      "threshold": 0.05,
+      "eligible_signals": 4131,
+      "accepted_signals": 3530,
+      "correct_accepted_signals": 1148,
+      "signal_coverage": 0.8545146453643185,
+      "accepted_precision": 0.32521246458923514,
+      "precision_lift_over_ungated": 0.013907695768126449,
+      "correct_signal_recall": 0.8926905132192846,
+      "precision_wilson_lower_95": 0.3099558880795411,
+      "meets_constraints": true,
+      "trading": {
+        "net_profit_fixed": 746.7000000001208,
+        "max_drawdown_fixed_percent": -21.473237510790593,
+        "sharpe_fixed": 1.754508891831233,
+        "executed_trades": 403,
+        "win_rate_percent": 43.67245657568238
+      }
+    },
+    {
+      "threshold": 0.06,
+      "eligible_signals": 4131,
+      "accepted_signals": 3437,
+      "correct_accepted_signals": 1128,
+      "signal_coverage": 0.8320019365771,
+      "accepted_precision": 0.3281931917369799,
+      "precision_lift_over_ungated": 0.016888422915871226,
+      "correct_signal_recall": 0.8771384136858476,
+      "precision_wilson_lower_95": 0.31269427831580204,
+      "meets_constraints": true,
+      "trading": {
+        "net_profit_fixed": 898.2714285715374,
+        "max_drawdown_fixed_percent": -20.66570046700692,
+        "sharpe_fixed": 2.0301741528478994,
+        "executed_trades": 399,
+        "win_rate_percent": 42.857142857142854
+      }
+    },
+    {
+      "threshold": 0.07,
+      "eligible_signals": 4131,
+      "accepted_signals": 3328,
+      "correct_accepted_signals": 1101,
+      "signal_coverage": 0.8056160735899298,
+      "accepted_precision": 0.3308293269230769,
+      "precision_lift_over_ungated": 0.019524558101968237,
+      "correct_signal_recall": 0.8561430793157077,
+      "precision_wilson_lower_95": 0.3150465899008501,
+      "meets_constraints": true,
+      "trading": {
+        "net_profit_fixed": 1221.5000000001164,
+        "max_drawdown_fixed_percent": -19.327139602941596,
+        "sharpe_fixed": 2.618784482962729,
+        "executed_trades": 391,
+        "win_rate_percent": 43.73401534526854
+      }
+    },
+    {
+      "threshold": 0.08,
+      "eligible_signals": 4131,
+      "accepted_signals": 3247,
+      "correct_accepted_signals": 1081,
+      "signal_coverage": 0.7860082304526749,
+      "accepted_precision": 0.3329226978749615,
+      "precision_lift_over_ungated": 0.02161792905385279,
+      "correct_signal_recall": 0.8405909797822706,
+      "precision_wilson_lower_95": 0.31691882459884596,
+      "meets_constraints": true,
+      "trading": {
+        "net_profit_fixed": 1449.8785714286896,
+        "max_drawdown_fixed_percent": -17.525141464145534,
+        "sharpe_fixed": 3.0851742811112017,
+        "executed_trades": 379,
+        "win_rate_percent": 44.327176781002635
+      }
+    },
+    {
+      "threshold": 0.09,
+      "eligible_signals": 4131,
+      "accepted_signals": 3122,
+      "correct_accepted_signals": 1051,
+      "signal_coverage": 0.7557492132655531,
+      "accepted_precision": 0.3366431774503523,
+      "precision_lift_over_ungated": 0.025338408629243636,
+      "correct_signal_recall": 0.8172628304821151,
+      "precision_wilson_lower_95": 0.32027621079086205,
+      "meets_constraints": true,
+      "trading": {
+        "net_profit_fixed": 753.6928571429962,
+        "max_drawdown_fixed_percent": -22.275377604635153,
+        "sharpe_fixed": 1.8448664606695535,
+        "executed_trades": 370,
+        "win_rate_percent": 43.78378378378379
+      }
+    },
+    {
+      "threshold": 0.1,
+      "eligible_signals": 4131,
+      "accepted_signals": 2971,
+      "correct_accepted_signals": 1010,
+      "signal_coverage": 0.71919632050351,
+      "accepted_precision": 0.3399528778189162,
+      "precision_lift_over_ungated": 0.02864810899780751,
+      "correct_signal_recall": 0.7853810264385692,
+      "precision_wilson_lower_95": 0.3231358946753607,
+      "meets_constraints": true,
+      "trading": {
+        "net_profit_fixed": 898.4857142857763,
+        "max_drawdown_fixed_percent": -22.882951016993097,
+        "sharpe_fixed": 2.13228510474831,
+        "executed_trades": 357,
+        "win_rate_percent": 43.417366946778714
+      }
+    },
+    {
+      "threshold": 0.11,
+      "eligible_signals": 4131,
+      "accepted_signals": 2826,
+      "correct_accepted_signals": 974,
+      "signal_coverage": 0.6840958605664488,
+      "accepted_precision": 0.3446567586694975,
+      "precision_lift_over_ungated": 0.03335198984838883,
+      "correct_signal_recall": 0.7573872472783826,
+      "precision_wilson_lower_95": 0.32735569997712294,
+      "meets_constraints": true,
+      "trading": {
+        "net_profit_fixed": 1270.5285714286529,
+        "max_drawdown_fixed_percent": -16.433188131901815,
+        "sharpe_fixed": 2.8470084260911372,
+        "executed_trades": 351,
+        "win_rate_percent": 44.44444444444444
+      }
+    },
+    {
+      "threshold": 0.12,
+      "eligible_signals": 4131,
+      "accepted_signals": 2673,
+      "correct_accepted_signals": 937,
+      "signal_coverage": 0.6470588235294118,
+      "accepted_precision": 0.3505424616535728,
+      "precision_lift_over_ungated": 0.03923769283246409,
+      "correct_signal_recall": 0.7286158631415242,
+      "precision_wilson_lower_95": 0.33268017452953574,
+      "meets_constraints": true,
+      "trading": {
+        "net_profit_fixed": 212.97857142861903,
+        "max_drawdown_fixed_percent": -22.21788436716046,
+        "sharpe_fixed": 0.8593484019733797,
+        "executed_trades": 340,
+        "win_rate_percent": 43.23529411764706
+      }
+    },
+    {
+      "threshold": 0.13,
+      "eligible_signals": 4131,
+      "accepted_signals": 2516,
+      "correct_accepted_signals": 894,
+      "signal_coverage": 0.6090534979423868,
+      "accepted_precision": 0.35532591414944353,
+      "precision_lift_over_ungated": 0.04402114532833484,
+      "correct_signal_recall": 0.6951788491446346,
+      "precision_wilson_lower_95": 0.33685759693625,
+      "meets_constraints": true,
+      "trading": {
+        "net_profit_fixed": -1473.7428571427772,
+        "max_drawdown_fixed_percent": -29.70159827986879,
+        "sharpe_fixed": -2.641200677723536,
+        "executed_trades": 327,
+        "win_rate_percent": 41.284403669724774
+      }
+    },
+    {
+      "threshold": 0.14,
+      "eligible_signals": 4131,
+      "accepted_signals": 2355,
+      "correct_accepted_signals": 839,
+      "signal_coverage": 0.570079883805374,
+      "accepted_precision": 0.3562632696390658,
+      "precision_lift_over_ungated": 0.0449585008179571,
+      "correct_signal_recall": 0.6524105754276828,
+      "precision_wilson_lower_95": 0.3371697462916043,
+      "meets_constraints": true,
+      "trading": {
+        "net_profit_fixed": -754.0071428571173,
+        "max_drawdown_fixed_percent": -19.349847431580528,
+        "sharpe_fixed": -1.1436697275651535,
+        "executed_trades": 311,
+        "win_rate_percent": 42.12218649517685
+      }
+    },
+    {
+      "threshold": 0.15,
+      "eligible_signals": 4131,
+      "accepted_signals": 2228,
+      "correct_accepted_signals": 786,
+      "signal_coverage": 0.5393367223432582,
+      "accepted_precision": 0.3527827648114901,
+      "precision_lift_over_ungated": 0.04147799599038143,
+      "correct_signal_recall": 0.6111975116640747,
+      "precision_wilson_lower_95": 0.33321000653826893,
+      "meets_constraints": true,
+      "trading": {
+        "net_profit_fixed": -623.2999999999302,
+        "max_drawdown_fixed_percent": -19.801743087092227,
+        "sharpe_fixed": -0.9492265835881472,
+        "executed_trades": 298,
+        "win_rate_percent": 41.61073825503356
+      }
+    },
+    {
+      "threshold": 0.16,
+      "eligible_signals": 4131,
+      "accepted_signals": 2057,
+      "correct_accepted_signals": 733,
+      "signal_coverage": 0.49794238683127573,
+      "accepted_precision": 0.3563441905687895,
+      "precision_lift_over_ungated": 0.04503942174768083,
+      "correct_signal_recall": 0.5699844479004665,
+      "precision_wilson_lower_95": 0.3359328670300469,
+      "meets_constraints": true,
+      "trading": {
+        "net_profit_fixed": -86.03571428564828,
+        "max_drawdown_fixed_percent": -19.887438001219536,
+        "sharpe_fixed": 0.18345305630862674,
+        "executed_trades": 283,
+        "win_rate_percent": 42.40282685512368
+      }
+    },
+    {
+      "threshold": 0.17,
+      "eligible_signals": 4131,
+      "accepted_signals": 1897,
+      "correct_accepted_signals": 675,
+      "signal_coverage": 0.4592108448317599,
+      "accepted_precision": 0.35582498682129676,
+      "precision_lift_over_ungated": 0.04452021800018807,
+      "correct_signal_recall": 0.5248833592534993,
+      "precision_wilson_lower_95": 0.33459136941346546,
+      "meets_constraints": true,
+      "trading": {
+        "net_profit_fixed": -589.1714285713861,
+        "max_drawdown_fixed_percent": -26.325071091569047,
+        "sharpe_fixed": -1.0833930402379173,
+        "executed_trades": 270,
+        "win_rate_percent": 41.85185185185185
+      }
+    },
+    {
+      "threshold": 0.18,
+      "eligible_signals": 4131,
+      "accepted_signals": 1738,
+      "correct_accepted_signals": 617,
+      "signal_coverage": 0.420721374969741,
+      "accepted_precision": 0.35500575373993093,
+      "precision_lift_over_ungated": 0.04370098491882224,
+      "correct_signal_recall": 0.4797822706065319,
+      "precision_wilson_lower_95": 0.3328509693416482,
+      "meets_constraints": true,
+      "trading": {
+        "net_profit_fixed": -161.12142857135404,
+        "max_drawdown_fixed_percent": -20.818244257568495,
+        "sharpe_fixed": -0.042439024917444335,
+        "executed_trades": 253,
+        "win_rate_percent": 42.68774703557312
+      }
+    },
+    {
+      "threshold": 0.19,
+      "eligible_signals": 4131,
+      "accepted_signals": 1564,
+      "correct_accepted_signals": 555,
+      "signal_coverage": 0.3786008230452675,
+      "accepted_precision": 0.35485933503836314,
+      "precision_lift_over_ungated": 0.04355456621725445,
+      "correct_signal_recall": 0.43157076205287714,
+      "precision_wilson_lower_95": 0.33152800928634907,
+      "meets_constraints": true,
+      "trading": {
+        "net_profit_fixed": -1254.7571428571136,
+        "max_drawdown_fixed_percent": -27.337805428827856,
+        "sharpe_fixed": -3.0530777801730835,
+        "executed_trades": 239,
+        "win_rate_percent": 40.58577405857741
+      }
+    },
+    {
+      "threshold": 0.2,
+      "eligible_signals": 4131,
+      "accepted_signals": 1384,
+      "correct_accepted_signals": 494,
+      "signal_coverage": 0.3350278382958122,
+      "accepted_precision": 0.3569364161849711,
+      "precision_lift_over_ungated": 0.04563164736386238,
+      "correct_signal_recall": 0.38413685847589424,
+      "precision_wilson_lower_95": 0.33212304562863615,
+      "meets_constraints": true,
+      "trading": {
+        "net_profit_fixed": -1381.8714285714195,
+        "max_drawdown_fixed_percent": -28.57488744904985,
+        "sharpe_fixed": -3.5796641742640958,
+        "executed_trades": 226,
+        "win_rate_percent": 40.26548672566372
+      }
+    },
+    {
+      "threshold": 0.21,
+      "eligible_signals": 4131,
+      "accepted_signals": 1202,
+      "correct_accepted_signals": 441,
+      "signal_coverage": 0.29097070927136287,
+      "accepted_precision": 0.3668885191347754,
+      "precision_lift_over_ungated": 0.05558375031366669,
+      "correct_signal_recall": 0.3429237947122862,
+      "precision_wilson_lower_95": 0.3401062027054573,
+      "meets_constraints": true,
+      "trading": {
+        "net_profit_fixed": -737.3857142856396,
+        "max_drawdown_fixed_percent": -21.61074555769245,
+        "sharpe_fixed": -1.8490110330258975,
+        "executed_trades": 206,
+        "win_rate_percent": 40.77669902912621
+      }
+    },
+    {
+      "threshold": 0.22,
+      "eligible_signals": 4131,
+      "accepted_signals": 1034,
+      "correct_accepted_signals": 391,
+      "signal_coverage": 0.25030259017187123,
+      "accepted_precision": 0.3781431334622824,
+      "precision_lift_over_ungated": 0.06683836464117371,
+      "correct_signal_recall": 0.30404354587869364,
+      "precision_wilson_lower_95": 0.34908789981381316,
+      "meets_constraints": true,
+      "trading": {
+        "net_profit_fixed": -794.6785714285252,
+        "max_drawdown_fixed_percent": -21.992531834129323,
+        "sharpe_fixed": -2.3615330962651386,
+        "executed_trades": 170,
+        "win_rate_percent": 41.17647058823529
+      }
+    },
+    {
+      "threshold": 0.23,
+      "eligible_signals": 4131,
+      "accepted_signals": 842,
+      "correct_accepted_signals": 332,
+      "signal_coverage": 0.2038247397724522,
+      "accepted_precision": 0.39429928741092635,
+      "precision_lift_over_ungated": 0.08299451858981766,
+      "correct_signal_recall": 0.2581648522550544,
+      "precision_wilson_lower_95": 0.3618411641625901,
+      "meets_constraints": true,
+      "trading": {
+        "net_profit_fixed": 247.59285714287216,
+        "max_drawdown_fixed_percent": -13.326959800580912,
+        "sharpe_fixed": 1.1246712382788184,
+        "executed_trades": 144,
+        "win_rate_percent": 43.75
+      }
+    },
+    {
+      "threshold": 0.24,
+      "eligible_signals": 4131,
+      "accepted_signals": 715,
+      "correct_accepted_signals": 286,
+      "signal_coverage": 0.1730815783103365,
+      "accepted_precision": 0.4,
+      "precision_lift_over_ungated": 0.08869523117889133,
+      "correct_signal_recall": 0.2223950233281493,
+      "precision_wilson_lower_95": 0.3647170663758433,
+      "meets_constraints": true,
+      "trading": {
+        "net_profit_fixed": 317.93571428572614,
+        "max_drawdown_fixed_percent": -10.46272219391103,
+        "sharpe_fixed": 1.4355652979360563,
+        "executed_trades": 131,
+        "win_rate_percent": 44.274809160305345
+      }
+    },
+    {
+      "threshold": 0.25,
+      "eligible_signals": 4131,
+      "accepted_signals": 591,
+      "correct_accepted_signals": 237,
+      "signal_coverage": 0.1430646332607117,
+      "accepted_precision": 0.4010152284263959,
+      "precision_lift_over_ungated": 0.08971045960528723,
+      "correct_signal_recall": 0.18429237947122862,
+      "precision_wilson_lower_95": 0.3622631355003111,
+      "meets_constraints": true,
+      "trading": {
+        "net_profit_fixed": 739.5428571428274,
+        "max_drawdown_fixed_percent": -10.22109400897376,
+        "sharpe_fixed": 3.183958963837684,
+        "executed_trades": 112,
+        "win_rate_percent": 46.42857142857143
+      }
+    },
+    {
+      "threshold": 0.26,
+      "eligible_signals": 4131,
+      "accepted_signals": 480,
+      "correct_accepted_signals": 196,
+      "signal_coverage": 0.11619462599854757,
+      "accepted_precision": 0.4083333333333333,
+      "precision_lift_over_ungated": 0.09702856451222464,
+      "correct_signal_recall": 0.15241057542768274,
+      "precision_wilson_lower_95": 0.36525748791677226,
+      "meets_constraints": true,
+      "trading": {
+        "net_profit_fixed": 1417.3428571428485,
+        "max_drawdown_fixed_percent": -7.09223174339066,
+        "sharpe_fixed": 6.290424234933419,
+        "executed_trades": 97,
+        "win_rate_percent": 49.48453608247423
+      }
+    },
+    {
+      "threshold": 0.27,
+      "eligible_signals": 4131,
+      "accepted_signals": 353,
+      "correct_accepted_signals": 143,
+      "signal_coverage": 0.08545146453643186,
+      "accepted_precision": 0.40509915014164305,
+      "precision_lift_over_ungated": 0.09379438132053436,
+      "correct_signal_recall": 0.11119751166407466,
+      "precision_wilson_lower_95": 0.355174981499277,
+      "meets_constraints": true,
+      "trading": {
+        "net_profit_fixed": 913.9357142856861,
+        "max_drawdown_fixed_percent": -7.402983387662676,
+        "sharpe_fixed": 4.566784714227151,
+        "executed_trades": 79,
+        "win_rate_percent": 46.835443037974684
+      }
+    },
+    {
+      "threshold": 0.28,
+      "eligible_signals": 4131,
+      "accepted_signals": 277,
+      "correct_accepted_signals": 116,
+      "signal_coverage": 0.06705398208666183,
+      "accepted_precision": 0.4187725631768953,
+      "precision_lift_over_ungated": 0.10746779435578663,
+      "correct_signal_recall": 0.09020217729393468,
+      "precision_wilson_lower_95": 0.36217141247553175,
+      "meets_constraints": true,
+      "trading": {
+        "net_profit_fixed": 722.7999999999738,
+        "max_drawdown_fixed_percent": -6.611834937769055,
+        "sharpe_fixed": 3.915664200824904,
+        "executed_trades": 70,
+        "win_rate_percent": 45.714285714285715
+      }
+    },
+    {
+      "threshold": 0.29,
+      "eligible_signals": 4131,
+      "accepted_signals": 218,
+      "correct_accepted_signals": 93,
+      "signal_coverage": 0.05277172597434036,
+      "accepted_precision": 0.42660550458715596,
+      "precision_lift_over_ungated": 0.11530073576604727,
+      "correct_signal_recall": 0.07231726283048212,
+      "precision_wilson_lower_95": 0.3627800092024459,
+      "meets_constraints": true,
+      "trading": {
+        "net_profit_fixed": 707.6571428571151,
+        "max_drawdown_fixed_percent": -6.6879705328732735,
+        "sharpe_fixed": 4.357934633414053,
+        "executed_trades": 55,
+        "win_rate_percent": 47.27272727272727
+      }
+    },
+    {
+      "threshold": 0.3,
+      "eligible_signals": 4131,
+      "accepted_signals": 163,
+      "correct_accepted_signals": 75,
+      "signal_coverage": 0.03945775841200678,
+      "accepted_precision": 0.4601226993865031,
+      "precision_lift_over_ungated": 0.14881793056539439,
+      "correct_signal_recall": 0.0583203732503888,
+      "precision_wilson_lower_95": 0.385406334688541,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 858.407142857126,
+        "max_drawdown_fixed_percent": -4.062489336178508,
+        "sharpe_fixed": 5.988834045507979,
+        "executed_trades": 41,
+        "win_rate_percent": 51.21951219512195
+      }
+    },
+    {
+      "threshold": 0.31,
+      "eligible_signals": 4131,
+      "accepted_signals": 117,
+      "correct_accepted_signals": 57,
+      "signal_coverage": 0.02832244008714597,
+      "accepted_precision": 0.48717948717948717,
+      "precision_lift_over_ungated": 0.17587471835837848,
+      "correct_signal_recall": 0.04432348367029549,
+      "precision_wilson_lower_95": 0.39846615466085505,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 956.292857142831,
+        "max_drawdown_fixed_percent": -3.230829268801812,
+        "sharpe_fixed": 7.702721296903044,
+        "executed_trades": 30,
+        "win_rate_percent": 56.666666666666664
+      }
+    },
+    {
+      "threshold": 0.32,
+      "eligible_signals": 4131,
+      "accepted_signals": 85,
+      "correct_accepted_signals": 37,
+      "signal_coverage": 0.0205761316872428,
+      "accepted_precision": 0.43529411764705883,
+      "precision_lift_over_ungated": 0.12398934882595014,
+      "correct_signal_recall": 0.028771384136858476,
+      "precision_wilson_lower_95": 0.33495605811400164,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 409.82142857140934,
+        "max_drawdown_fixed_percent": -3.38366186713168,
+        "sharpe_fixed": 3.955323474996766,
+        "executed_trades": 24,
+        "win_rate_percent": 50.0
+      }
+    },
+    {
+      "threshold": 0.33,
+      "eligible_signals": 4131,
+      "accepted_signals": 60,
+      "correct_accepted_signals": 28,
+      "signal_coverage": 0.014524328249818447,
+      "accepted_precision": 0.4666666666666667,
+      "precision_lift_over_ungated": 0.15536189784555798,
+      "correct_signal_recall": 0.02177293934681182,
+      "precision_wilson_lower_95": 0.34627701540988,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 164.4571428571071,
+        "max_drawdown_fixed_percent": -3.669141083622703,
+        "sharpe_fixed": 1.7257844762362242,
+        "executed_trades": 22,
+        "win_rate_percent": 40.909090909090914
+      }
+    },
+    {
+      "threshold": 0.34,
+      "eligible_signals": 4131,
+      "accepted_signals": 40,
+      "correct_accepted_signals": 17,
+      "signal_coverage": 0.009682885499878963,
+      "accepted_precision": 0.425,
+      "precision_lift_over_ungated": 0.1136952311788913,
+      "correct_signal_recall": 0.013219284603421462,
+      "precision_wilson_lower_95": 0.2850916852481588,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": -78.13571428574141,
+        "max_drawdown_fixed_percent": -3.741976530467646,
+        "sharpe_fixed": -0.8669608741363121,
+        "executed_trades": 17,
+        "win_rate_percent": 35.294117647058826
+      }
+    },
+    {
+      "threshold": 0.35,
+      "eligible_signals": 4131,
+      "accepted_signals": 15,
+      "correct_accepted_signals": 6,
+      "signal_coverage": 0.0036310820624546117,
+      "accepted_precision": 0.4,
+      "precision_lift_over_ungated": 0.08869523117889133,
+      "correct_signal_recall": 0.004665629860031105,
+      "precision_wilson_lower_95": 0.19824228082594664,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": -13.392857142865978,
+        "max_drawdown_fixed_percent": -2.477571428571198,
+        "sharpe_fixed": -0.14119717618721492,
+        "executed_trades": 11,
+        "win_rate_percent": 36.36363636363637
+      }
+    },
+    {
+      "threshold": 0.36,
+      "eligible_signals": 4131,
+      "accepted_signals": 10,
+      "correct_accepted_signals": 4,
+      "signal_coverage": 0.002420721374969741,
+      "accepted_precision": 0.4,
+      "precision_lift_over_ungated": 0.08869523117889133,
+      "correct_signal_recall": 0.003110419906687403,
+      "precision_wilson_lower_95": 0.16817758120350967,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": -34.18571428571704,
+        "max_drawdown_fixed_percent": -1.251999999999882,
+        "sharpe_fixed": -0.6915056328123986,
+        "executed_trades": 6,
+        "win_rate_percent": 33.33333333333333
+      }
+    },
+    {
+      "threshold": 0.37,
+      "eligible_signals": 4131,
+      "accepted_signals": 4,
+      "correct_accepted_signals": 3,
+      "signal_coverage": 0.0009682885499878964,
+      "accepted_precision": 0.75,
+      "precision_lift_over_ungated": 0.4386952311788913,
+      "correct_signal_recall": 0.0023328149300155523,
+      "precision_wilson_lower_95": 0.30063605244263664,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 39.73571428571631,
+        "max_drawdown_fixed_percent": -0.6285714285713865,
+        "sharpe_fixed": 1.4006200310103194,
+        "executed_trades": 2,
+        "win_rate_percent": 50.0
+      }
+    },
+    {
+      "threshold": 0.38,
+      "eligible_signals": 4131,
+      "accepted_signals": 1,
+      "correct_accepted_signals": 1,
+      "signal_coverage": 0.0002420721374969741,
+      "accepted_precision": 1.0,
+      "precision_lift_over_ungated": 0.6886952311788913,
+      "correct_signal_recall": 0.0007776049766718507,
+      "precision_wilson_lower_95": 0.20654329147389294,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 107.7785714285692,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 4.192509668609642,
+        "executed_trades": 1,
+        "win_rate_percent": 100.0
+      }
+    },
+    {
+      "threshold": 0.39,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.4,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.41,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.42,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.43,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.44,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.45,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.46,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.47,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.48,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.49,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.5,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.51,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.52,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.53,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.54,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.55,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.56,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.57,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.58,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.59,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.6,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.61,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.62,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.63,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.64,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.65,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.66,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.67,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.68,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.69,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.7,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.71,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.72,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.73,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.74,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.75,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.76,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.77,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.78,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.79,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.8,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.81,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.82,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.83,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.84,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.85,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.86,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.87,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.88,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.89,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.9,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.91,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.92,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.93,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.94,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    },
+    {
+      "threshold": 0.95,
+      "eligible_signals": 4131,
+      "accepted_signals": 0,
+      "correct_accepted_signals": 0,
+      "signal_coverage": 0.0,
+      "accepted_precision": 0.0,
+      "precision_lift_over_ungated": -0.3113047688211087,
+      "correct_signal_recall": 0.0,
+      "precision_wilson_lower_95": 0.0,
+      "meets_constraints": false,
+      "trading": {
+        "net_profit_fixed": 0.0,
+        "max_drawdown_fixed_percent": 0.0,
+        "sharpe_fixed": 0.0,
+        "executed_trades": 0,
+        "win_rate_percent": 0.0
+      }
+    }
+  ],
+  "generated_at": "2026-08-09T23:17:07.038005+08:00",
+  "calibration_period": {
+    "start": "2025-10-09T22:30:00",
+    "end": "2025-10-30T21:00:00",
+    "sequences": 4131
+  },
+  "final_test_accessed": false,
+  "selection_note": "Trading metrics are audit diagnostics only and do not determine the selected threshold."
+}
