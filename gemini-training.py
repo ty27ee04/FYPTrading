@@ -171,6 +171,8 @@ def preprocess_gold_data(
     max_horizon=MODEL.max_horizon,
     pt_mult=STRATEGY.take_profit_atr,
     sl_mult=STRATEGY.stop_loss_atr,
+    scaler_override=None,
+    write_artifacts=True,
 ):
     development_report, test_report = validate_dataset_pair(train_path, test_path)
     print(
@@ -302,14 +304,21 @@ def preprocess_gold_data(
     if min(len(train_df), len(validation_df), len(meta_df)) <= minimum_rows:
         raise ValueError("Development dataset is too short for purged chronological splits")
 
-    scaler = StandardScaler()
-    X_tr_s = scaler.fit_transform(train_df[feat_cols])
+    if scaler_override is None:
+        scaler = StandardScaler()
+        X_tr_s = scaler.fit_transform(train_df[feat_cols])
+    else:
+        scaler = scaler_override
+        X_tr_s = scaler.transform(train_df[feat_cols])
     X_val_s = scaler.transform(validation_df[feat_cols])
     X_meta_s = scaler.transform(meta_df[feat_cols])
     X_te_s = scaler.transform(df_te[feat_cols])
 
-    joblib.dump(scaler, artifact_path('scaler.pkl'))
-    print("[*] Scaler saved successfully from DL preprocessing.")
+    if write_artifacts:
+        joblib.dump(scaler, artifact_path('scaler.pkl'))
+        print("[*] Scaler saved successfully from DL preprocessing.")
+    else:
+        print("[*] Frozen production scaler loaded without refitting or overwriting.")
     
     def seq_gen(data, labels):
         X, y = [], []
@@ -378,9 +387,10 @@ def preprocess_gold_data(
             },
         },
     }
-    os.makedirs("outputs", exist_ok=True)
-    with open("outputs/model_metadata.json", "w", encoding="utf-8") as metadata_file:
-        json.dump(metadata, metadata_file, indent=2)
+    if write_artifacts:
+        os.makedirs("outputs", exist_ok=True)
+        with open("outputs/model_metadata.json", "w", encoding="utf-8") as metadata_file:
+            json.dump(metadata, metadata_file, indent=2)
 
     print(
         "[*] Leakage-safe sequences: "

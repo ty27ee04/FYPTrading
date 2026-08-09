@@ -26,6 +26,7 @@ def simulate_execution(
     reverse_on_opposite: bool = STRATEGY.reverse_on_opposite_signal,
     contract_size: float = 100.0,
     use_recorded_spread: bool = STRATEGY.use_recorded_spread,
+    close_at_end: bool = False,
 ) -> tuple[pd.DataFrame, list[float]]:
     """Simulate one-position execution using only information available per bar.
 
@@ -172,6 +173,9 @@ def simulate_execution(
                 bars_held = index - position["entry_index"]
                 if bars_held >= max_horizon:
                     close_position(index, close, "Time Stop")
+
+        if close_at_end and index == len(market) - 1 and position is not None:
+            close_position(index, close, "End Of Evaluation")
 
         equity_history.append(equity)
 

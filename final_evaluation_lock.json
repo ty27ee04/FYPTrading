@@ -1,0 +1,52 @@
+{
+  "state": "completed",
+  "started_at": "2026-08-09T23:44:53.103849+08:00",
+  "git_commit": "e27c85eaea621afd0bc73bbb0575d8f0069e47f2",
+  "fingerprints_sha256": {
+    "evaluator": "8d1e6bc7546daa265e850136a4f96a95c2913c1beeeae1d52b2994bd5960012a",
+    "training_pipeline": "482136016a27092bd9f416f7b51c1bd88882e54b338f02e2f7ed3d514d3c1bfa",
+    "execution_simulator": "f1ad593872b9b94553f3a0164ec405d2ef1fea58f10cf7cdfd05c657ef9e75c4",
+    "model_a": "c6c4cce12b71af9221955779567b9ab3dde21d6538df123b0714170c5815f075",
+    "model_b": "e542b32074fb7e917e9e34af4ec5e6de4499f7e5b7fe7130417c1dee0d302f1a",
+    "scaler": "61975a18fe0d38363d7ab5b18956d6349e7fe6bd976fab2b35c68bded20783f5",
+    "threshold": "5734c723c94faf5c6b2130ba689f869baf980be3bafa8083e846aec23920c89a",
+    "final_dataset": "87b66d1985d6334a29a38aa5c1f6de7df9823792282f2d70e6354db1dfb2ce81"
+  },
+  "policy": {
+    "single_evaluation_only": true,
+    "retraining_allowed": false,
+    "post_test_tuning_allowed": false
+  },
+  "completed_at": "2026-08-09T23:45:06.824414+08:00",
+  "results_path": "outputs/final_evaluation/final_evaluation_results.json",
+  "selected_summary": {
+    "threshold": 0.26,
+    "total_sequences": 33939,
+    "model_a_signals": 33933,
+    "model_a_signal_coverage_percent": 99.98232122337134,
+    "accepted_signals": 10902,
+    "accepted_signal_coverage_percent": 32.12233713427031,
+    "gate_acceptance_percent_of_model_a_signals": 32.12801697462647,
+    "initial_equity": 10000.0,
+    "final_equity": 9379.386428571632,
+    "net_profit": -620.6135714283682,
+    "return_percent": -6.206135714283678,
+    "maximum_drawdown_percent": -7.628407039826976,
+    "sharpe_ratio": -2.813174787407676,
+    "executed_trades": 1423,
+    "winning_trades": 505,
+    "losing_trades": 918,
+    "win_rate_percent": 35.488404778636685,
+    "average_trade_pnl": -0.4361304085934909,
+    "profit_factor": 0.8844934167845461,
+    "exit_reasons": {
+      "Stop Loss": 636,
+      "Take Profit": 399,
+      "Break Even Stop": 203,
+      "Time Stop": 85,
+      "Opposite Signal Reversal": 82,
+      "Stop Loss Gap": 14,
+      "Stop Loss (Same Bar Conflict)": 4
+    }
+  }
+}
