@@ -38,6 +38,13 @@ class StrategyConfig:
     stop_loss_atr: float = 2.0
     gatekeeper_threshold: float = 0.52
     spread_penalty: float = 0.20
+    price_point: float = 0.01
+    use_recorded_spread: bool = True
+    use_break_even: bool = True
+    break_even_trigger: float = 0.60
+    break_even_buffer: float = 0.05
+    reverse_on_opposite_signal: bool = True
+    allow_multiple_trades: bool = False
 
 
 @dataclass(frozen=True)

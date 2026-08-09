@@ -20,6 +20,7 @@ from datetime import datetime
 from pathlib import Path
 
 from data_validation import validate_dataset_pair
+from execution_simulator import simulate_execution
 from strategy_config import CALIBRATION, FEATURE_COLUMNS, MODEL, STRATEGY
 from threshold_calibration import calibrate_gatekeeper_threshold, threshold_grid
 
@@ -182,7 +183,11 @@ def preprocess_gold_data(
         df = pd.read_csv(path)
         df['time'] = pd.to_datetime(df['time'])
         df = df.sort_values('time').reset_index(drop=True)
-        df = df.drop(columns=['spread', 'real_volume'], errors='ignore')
+        if 'spread' in df:
+            df['spread_price'] = (
+                pd.to_numeric(df['spread'], errors='coerce') * STRATEGY.price_point
+            )
+        df = df.drop(columns=['real_volume'], errors='ignore')
         
         # Smooth 'close' price before calculating indicators
         df['close_smooth'] = denoise_series(df['close'])
@@ -390,6 +395,10 @@ def preprocess_gold_data(
             f"classes={distribution}"
         )
     print("[*] Final test labels remain locked until the final evaluation run.")
+    meta_trade_frame = meta_df.iloc[lookback:].reset_index(drop=True)
+    meta_trade_frame["signal_atr"] = meta_df["atr"].iloc[lookback - 1:-1].to_numpy()
+    test_trade_frame = df_te.iloc[lookback:].reset_index(drop=True)
+    test_trade_frame["signal_atr"] = df_te["atr"].iloc[lookback - 1:-1].to_numpy()
     return (
         X_tr,
         y_tr,
@@ -397,10 +406,10 @@ def preprocess_gold_data(
         y_val,
         X_meta,
         y_meta,
-        meta_df.iloc[lookback:].reset_index(drop=True),
+        meta_trade_frame,
         X_te,
         y_te,
-        df_te.iloc[lookback:].reset_index(drop=True),
+        test_trade_frame,
         metadata,
     )
 
@@ -485,104 +494,43 @@ def objective(trial):
 # ==========================================
 def run_detailed_backtest(df, preds, initial_equity=10000, fixed_lot=0.10, pt_mult=3.0, sl_mult=2.0, max_horizon=24, spread_penalty=0.20):
     df = df.copy()
-    contract_size = 100 
-    
-    equity_fixed = initial_equity
-    equity_dynamic = initial_equity
-    
-    fixed_history = [initial_equity]
-    dynamic_history = [initial_equity]
-    
-    trades = []
-    
-    # State tracking
-    in_trade = False
-    trade_type = 0 # 1 for Buy, -1 for Sell
-    entry_price = 0
-    entry_idx = 0
-    entry_atr = 0
-    dyn_lot_at_entry = 0
-    
-    for i in range(1, len(df)):
-        # 1. CHECK EXITS IF WE ARE IN A TRADE
-        if in_trade:
-            high, low, close = df['high'].iloc[i], df['low'].iloc[i], df['close'].iloc[i]
-            bars_held = i - entry_idx
-            
-            exit_triggered = False
-            exit_price = 0
-            exit_reason = ""
-            
-            if trade_type == 1: # LONG POSITIONS
-                tp = entry_price + (pt_mult * entry_atr)
-                sl = entry_price - (sl_mult * entry_atr)
-                if high >= tp and low <= sl:
-                    exit_triggered, exit_price, exit_reason = True, sl, "Stop Loss (Same Bar Conflict)"
-                elif high >= tp: exit_triggered, exit_price, exit_reason = True, tp, "Take Profit"
-                elif low <= sl: exit_triggered, exit_price, exit_reason = True, sl, "Stop Loss"
-                elif bars_held >= max_horizon: exit_triggered, exit_price, exit_reason = True, close, "Time Stop"
-                    
-            elif trade_type == -1: # SHORT POSITIONS
-                tp = entry_price - (pt_mult * entry_atr)
-                sl = entry_price + (sl_mult * entry_atr)
-                if low <= tp and high >= sl:
-                    exit_triggered, exit_price, exit_reason = True, sl, "Stop Loss (Same Bar Conflict)"
-                elif low <= tp: exit_triggered, exit_price, exit_reason = True, tp, "Take Profit"
-                elif high >= sl: exit_triggered, exit_price, exit_reason = True, sl, "Stop Loss"
-                elif bars_held >= max_horizon: exit_triggered, exit_price, exit_reason = True, close, "Time Stop"
+    fixed_trades, fixed_history = simulate_execution(
+        df,
+        np.asarray(preds),
+        initial_equity=initial_equity,
+        lot_size_for_equity=lambda _: fixed_lot,
+        take_profit_atr=pt_mult,
+        stop_loss_atr=sl_mult,
+        max_horizon=max_horizon,
+        spread_penalty=spread_penalty,
+    )
+    dynamic_trades, dynamic_history = simulate_execution(
+        df,
+        np.asarray(preds),
+        initial_equity=initial_equity,
+        lot_size_for_equity=lambda equity: np.clip(
+            round((equity / 10000) * 0.1, 2), 0.01, 10.0
+        ),
+        take_profit_atr=pt_mult,
+        stop_loss_atr=sl_mult,
+        max_horizon=max_horizon,
+        spread_penalty=spread_penalty,
+    )
+    df['equity_fixed'] = fixed_history
+    df['equity_dynamic'] = dynamic_history
 
-            if exit_triggered:
-                # Raw diffs and Spread deduction
-                p_diff_raw = (exit_price - entry_price) * trade_type
-                p_diff_net = p_diff_raw - spread_penalty
-                
-                # Calculate actual spread cost in Dollars
-                spread_cost_dynamic = spread_penalty * dyn_lot_at_entry * contract_size
-                
-                # Calculate Net PnL
-                pnl_fixed = p_diff_net * fixed_lot * contract_size
-                pnl_dynamic = p_diff_net * dyn_lot_at_entry * contract_size
-                
-                equity_fixed += pnl_fixed
-                equity_dynamic += pnl_dynamic
-                
-                # ENHANCED TRADE LOGGING
-                trades.append({
-                    'Trade_ID': len(trades) + 1,
-                    'Entry_Time': df['time'].iloc[entry_idx], 
-                    'Exit_Time': df['time'].iloc[i],
-                    'Direction': 'Long' if trade_type==1 else 'Short',
-                    'Entry_Price': round(entry_price, 3), 
-                    'Exit_Price': round(exit_price, 3),
-                    'Exit_Reason': exit_reason,
-                    'Dynamic_Lot_Size': dyn_lot_at_entry,
-                    'Spread_Charge_USD': round(spread_cost_dynamic, 2),
-                    'Net_PnL_USD': round(pnl_dynamic, 2),
-                    'Running_Equity_USD': round(equity_dynamic, 2)
-                })
-                in_trade = False
-                
-        # 2. CHECK ENTRIES IF WE ARE NOT IN A TRADE
-        if not in_trade:
-            signal = preds[i]
-            if signal == 1 or signal == 2:
-                in_trade = True
-                trade_type = 1 if signal == 1 else -1
-                entry_price = df['open'].iloc[i] # Enter on open of next bar
-                entry_idx = i
-                entry_atr = df['atr'].iloc[i-1] # Use ATR from signal bar
-                
-                # Calculate Dynamic Lot
-                raw_dyn_lot = (equity_dynamic / 10000) * 0.1
-                dyn_lot_at_entry = np.clip(round(raw_dyn_lot, 2), 0.01, 10.0)
-
-        fixed_history.append(equity_fixed)
-        dynamic_history.append(equity_dynamic)
-
-    df['equity_fixed'] = fixed_history[:len(df)]
-    df['equity_dynamic'] = dynamic_history[:len(df)]
-    
-    trade_log = pd.DataFrame(trades)
+    trade_log = dynamic_trades.rename(
+        columns={
+            'Lot_Size': 'Dynamic_Lot_Size',
+            'Net_PnL': 'Net_PnL_USD',
+            'Running_Equity': 'Running_Equity_USD',
+        }
+    )
+    if not trade_log.empty:
+        trade_log.insert(0, 'Trade_ID', np.arange(1, len(trade_log) + 1))
+        trade_log['Spread_Charge_USD'] = (
+            trade_log['Spread_Price'] * trade_log['Dynamic_Lot_Size'] * 100.0
+        )
     
     def calculate_sharpe(equity_series):
         rets = equity_series.pct_change().dropna()
@@ -595,6 +543,8 @@ def run_detailed_backtest(df, preds, initial_equity=10000, fixed_lot=0.10, pt_mu
         return max(drawdown.min(), -1.0) 
 
     win_rate = (len(trade_log[trade_log['Net_PnL_USD'] > 0]) / len(trade_log) * 100) if len(trade_log) > 0 else 0
+    equity_fixed = fixed_history[-1] if fixed_history else initial_equity
+    equity_dynamic = dynamic_history[-1] if dynamic_history else initial_equity
     
     return df, trade_log, {
         'initial': initial_equity,

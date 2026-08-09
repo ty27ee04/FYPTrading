@@ -1,4 +1,5 @@
 import os
+import argparse
 import numpy as np
 import pandas as pd
 import torch
@@ -8,6 +9,7 @@ from torch.utils.data import DataLoader, TensorDataset
 import joblib
 import matplotlib.pyplot as plt
 
+from execution_simulator import simulate_execution
 from strategy_config import (
     FEATURE_COLUMNS,
     MODEL,
@@ -82,7 +84,9 @@ def load_and_preprocess_test_data(
     df = pd.read_csv(test_path)
     df['time'] = pd.to_datetime(df['time'])
     df = df.sort_values('time').reset_index(drop=True)
-    df = df.drop(columns=['spread', 'real_volume'], errors='ignore')
+    if 'spread' in df:
+        df['spread_price'] = pd.to_numeric(df['spread'], errors='coerce') * STRATEGY.price_point
+    df = df.drop(columns=['real_volume'], errors='ignore')
     
     df['close_smooth'] = denoise_series(df['close'])
     df['hour'] = df['time'].dt.hour
@@ -127,6 +131,7 @@ def load_and_preprocess_test_data(
         
     # We don't need actual labels for pure backtesting simulation
     test_meta = df.iloc[lookback:].reset_index(drop=True)
+    test_meta["signal_atr"] = df["atr"].iloc[lookback - 1:-1].to_numpy()
     return np.array(X), test_meta, len(feat_cols)
 
 # ==========================================
@@ -138,82 +143,26 @@ def run_scenario_backtest(df, preds, scenario_name, initial_equity, strategy_typ
                           sl_mult=STRATEGY.stop_loss_atr,
                           max_horizon=MODEL.max_horizon,
                           spread_penalty=STRATEGY.spread_penalty):
-    """
-    strategy_type: 'FIXED' or 'DYNAMIC'
-    dyn_step_equity & dyn_step_lot: Example: for every $100, trade 0.01 lots.
-    """
-    df = df.copy()
-    contract_size = 100 
-    equity = initial_equity
-    equity_history = [initial_equity]
-    
-    trades = []
-    in_trade = False
-    trade_type, entry_price, entry_idx, entry_atr, lot_size_at_entry = 0, 0, 0, 0, 0
-    
-    for i in range(1, len(df)):
-        if in_trade:
-            high, low, close = df['high'].iloc[i], df['low'].iloc[i], df['close'].iloc[i]
-            bars_held = i - entry_idx
-            
-            exit_triggered, exit_price, exit_reason = False, 0, ""
-            
-            if trade_type == 1: 
-                tp, sl = entry_price + (pt_mult * entry_atr), entry_price - (sl_mult * entry_atr)
-                if high >= tp and low <= sl:
-                    exit_triggered, exit_price, exit_reason = True, sl, "Stop Loss (Same Bar Conflict)"
-                elif high >= tp: exit_triggered, exit_price, exit_reason = True, tp, "Take Profit"
-                elif low <= sl: exit_triggered, exit_price, exit_reason = True, sl, "Stop Loss"
-                elif bars_held >= max_horizon: exit_triggered, exit_price, exit_reason = True, close, "Time Stop"
-                    
-            elif trade_type == -1: 
-                tp, sl = entry_price - (pt_mult * entry_atr), entry_price + (sl_mult * entry_atr)
-                if low <= tp and high >= sl:
-                    exit_triggered, exit_price, exit_reason = True, sl, "Stop Loss (Same Bar Conflict)"
-                elif low <= tp: exit_triggered, exit_price, exit_reason = True, tp, "Take Profit"
-                elif high >= sl: exit_triggered, exit_price, exit_reason = True, sl, "Stop Loss"
-                elif bars_held >= max_horizon: exit_triggered, exit_price, exit_reason = True, close, "Time Stop"
+    if strategy_type == "FIXED":
+        lot_size_for_equity = lambda _: fixed_lot
+    elif strategy_type == "DYNAMIC":
+        lot_size_for_equity = lambda equity: np.clip(
+            round((equity / dyn_step_equity) * dyn_step_lot, 2), 0.01, 10.0
+        )
+    else:
+        raise ValueError(f"Unknown strategy type: {strategy_type}")
 
-            if exit_triggered:
-                p_diff_raw = (exit_price - entry_price) * trade_type
-                p_diff_net = p_diff_raw - spread_penalty
-                
-                spread_cost = spread_penalty * lot_size_at_entry * contract_size
-                pnl = p_diff_net * lot_size_at_entry * contract_size
-                
-                equity += pnl
-                
-                trades.append({
-                    'Scenario': scenario_name,
-                    'Entry_Time': df['time'].iloc[entry_idx], 'Exit_Time': df['time'].iloc[i],
-                    'Direction': 'Long' if trade_type==1 else 'Short',
-                    'Lot_Size': lot_size_at_entry, 'Net_PnL': pnl, 'Running_Equity': equity
-                })
-                in_trade = False
-                
-        if not in_trade:
-            signal = preds[i]
-            if signal == 1 or signal == 2:
-                # If equity drops below 0, margin call (account blown)
-                if equity <= 0:
-                    break 
-
-                in_trade = True
-                trade_type = 1 if signal == 1 else -1
-                entry_price = df['open'].iloc[i] 
-                entry_idx = i
-                entry_atr = df['atr'].iloc[i-1] 
-                
-                if strategy_type == 'FIXED':
-                    lot_size_at_entry = fixed_lot
-                else:
-                    # DYNAMIC LOT CALCULATION
-                    raw_dyn_lot = (equity / dyn_step_equity) * dyn_step_lot
-                    lot_size_at_entry = np.clip(round(raw_dyn_lot, 2), 0.01, 10.0)
-
-        equity_history.append(equity)
-
-    trade_log = pd.DataFrame(trades)
+    trade_log, equity_history = simulate_execution(
+        df,
+        np.asarray(preds),
+        initial_equity=initial_equity,
+        lot_size_for_equity=lot_size_for_equity,
+        take_profit_atr=pt_mult,
+        stop_loss_atr=sl_mult,
+        max_horizon=max_horizon,
+        spread_penalty=spread_penalty,
+    )
+    equity = equity_history[-1] if equity_history else initial_equity
     
     # Calculate Metrics
     if len(equity_history) > 0:
@@ -242,24 +191,39 @@ def run_scenario_backtest(df, preds, scenario_name, initial_equity, strategy_typ
         'Sharpe_Ratio': round(calculate_sharpe(equity_history), 2),
         'Win_Rate': round(win_rate, 2),
         'Total_Trades': len(trade_log),
-        'Times': df['time'].values[:len(equity_history)], # Added for graphing
-        'Equity_Curve': equity_history                    # Added for graphing
+        'Times': df['time'].values[:len(equity_history)],
+        'Equity_Curve': equity_history
     }
 
 # ==========================================
 # 4. SCENARIO EXECUTION
 # ==========================================
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run the locked final backtest")
+    parser.add_argument(
+        "--unlock-final-test",
+        action="store_true",
+        help="Explicitly authorize access to the locked six-month test dataset.",
+    )
+    cli_args = parser.parse_args()
+    if not cli_args.unlock_final_test:
+        raise SystemExit(
+            "Final test remains locked. Re-run with --unlock-final-test only in Phase 6."
+        )
+
     print("[*] Processing Test Data (Fast Mode)...")
     X_te, test_meta, in_dim = load_and_preprocess_test_data("XAUUSD_M5_6month.csv")
     
     print("[*] Loading Pre-trained Models...")
-    # Load Models (Must match your Optuna best hidden dimensions. Assume 64 based on your last run)
-    model_a = ModelA_Base(in_dim, hid_dim=64).to(device)
+    model_a_state = torch.load('best_model_a.pth', map_location=device, weights_only=True)
+    hidden_dimension = int(model_a_state['lstm.weight_hh_l0'].shape[1])
+    model_a = ModelA_Base(in_dim, hid_dim=hidden_dimension).to(device)
     model_b = ModelB_TCN(in_dim).to(device)
     
-    model_a.load_state_dict(torch.load('best_model_a.pth'))
-    model_b.load_state_dict(torch.load('best_model_b.pth'))
+    model_a.load_state_dict(model_a_state)
+    model_b.load_state_dict(
+        torch.load('best_model_b.pth', map_location=device, weights_only=True)
+    )
     model_a.eval(); model_b.eval()
 
     print("[*] Generating AI Predictions...")

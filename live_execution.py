@@ -37,7 +37,7 @@ REQUIRED_CANDLES = 400
 
 # --- Strategy Controls ---
 STRATEGY_TYPE = "FIXED"            # Options: "FIXED" or "DYNAMIC"
-ALLOW_MULTIPLE_TRADES = False      # False = Match Python backtest. True = Pyramiding/Overlapping.
+ALLOW_MULTIPLE_TRADES = STRATEGY.allow_multiple_trades
 
 # --- Lot Size Settings ---
 FIXED_LOT_SIZE = 0.01              # Active if STRATEGY_TYPE = "FIXED"
@@ -58,9 +58,9 @@ FRIDAY_LIQ_HOUR = 23               # <--- NEW: MT5 Server Hour to liquidate (23 
 FRIDAY_LIQ_MINUTE = 50             # <--- NEW: MT5 Server Minute to liquidate
 
 # --- Trade Management ---
-USE_BREAK_EVEN = True
-BE_TRIGGER = 0.60          # 60% of the way to Take Profit milestone
-BE_BUFFER = 0.05           # Move SL to Entry +/- 0.05 to cover fees
+USE_BREAK_EVEN = STRATEGY.use_break_even
+BE_TRIGGER = STRATEGY.break_even_trigger
+BE_BUFFER = STRATEGY.break_even_buffer
 
 # ==========================================
 # 1.5 TELEGRAM NOTIFICATION SYSTEM
@@ -299,7 +299,9 @@ def denoise_series(series, span=5):
     return series.ewm(span=span, adjust=False).mean()
 
 def get_live_tensor():
-    rates = mt5.copy_rates_from_pos(SYMBOL, TIMEFRAME, 0, REQUIRED_CANDLES)
+    # Position 0 is the newly forming candle. Training uses a completed signal
+    # candle and enters on the following open, so live inference must start at 1.
+    rates = mt5.copy_rates_from_pos(SYMBOL, TIMEFRAME, 1, REQUIRED_CANDLES)
     if rates is None or len(rates) < REQUIRED_CANDLES:
         logging.warning("Failed to retrieve sufficient live market data.")
         return None, None
@@ -351,15 +353,21 @@ def get_server_time_str():
         return datetime.fromtimestamp(tick.time, timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
     return "UNKNOWN TIME"
 
+
+def get_strategy_positions():
+    """Return only positions opened by this strategy, never manual/other-bot trades."""
+    positions = mt5.positions_get(symbol=SYMBOL)
+    if positions is None:
+        return ()
+    return tuple(pos for pos in positions if pos.magic == MAGIC_NUMBER)
+
 # ==========================================
 # 3.5 REAL-TIME TRADE MONITOR
 # ==========================================
 def check_closed_trades():
     global active_trade_tickets
     
-    positions = mt5.positions_get(symbol=SYMBOL)
-    if positions is None:
-        return
+    positions = get_strategy_positions()
         
     current_tickets = {p.ticket for p in positions}
     closed_tickets = active_trade_tickets - current_tickets
@@ -415,8 +423,8 @@ def apply_breakeven():
     if not USE_BREAK_EVEN:
         return
         
-    positions = mt5.positions_get(symbol=SYMBOL)
-    if positions is None or len(positions) == 0:
+    positions = get_strategy_positions()
+    if len(positions) == 0:
         return
         
     for pos in positions:
@@ -497,7 +505,7 @@ def execute_trade(action, atr):
         order_type = mt5.ORDER_TYPE_SELL
 
     # 2. Execution Lock & Reversal Logic
-    positions = mt5.positions_get(symbol=SYMBOL)
+    positions = get_strategy_positions()
     if positions is not None and len(positions) > 0:
         if not ALLOW_MULTIPLE_TRADES:
             for pos in positions:
@@ -616,8 +624,8 @@ def execute_trade(action, atr):
         send_telegram_alert(alert_msg)
 
 def liquidate_weekend_positions():
-    positions = mt5.positions_get(symbol=SYMBOL)
-    if positions is None or len(positions) == 0:
+    positions = get_strategy_positions()
+    if len(positions) == 0:
         return False
 
     logging.info("🛡️ WEEKEND PROTECTION TRIGGERED: Liquidating all open positions...")
@@ -655,6 +663,51 @@ def liquidate_weekend_positions():
         
     return True
 
+
+def apply_time_stop():
+    """Close strategy-owned positions after the label/backtest horizon expires."""
+    positions = get_strategy_positions()
+    if len(positions) == 0:
+        return
+    tick = mt5.symbol_info_tick(SYMBOL)
+    if tick is None:
+        return
+
+    maximum_age_seconds = MODEL.max_horizon * 5 * 60
+    for pos in positions:
+        if tick.time - pos.time < maximum_age_seconds:
+            continue
+        close_type = (
+            mt5.ORDER_TYPE_BUY
+            if pos.type == mt5.ORDER_TYPE_SELL
+            else mt5.ORDER_TYPE_SELL
+        )
+        close_price = tick.ask if pos.type == mt5.ORDER_TYPE_SELL else tick.bid
+        request = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": SYMBOL,
+            "volume": pos.volume,
+            "type": close_type,
+            "position": pos.ticket,
+            "price": close_price,
+            "deviation": 20,
+            "magic": MAGIC_NUMBER,
+            "comment": "AI 24-Bar Time Stop",
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": mt5.ORDER_FILLING_FOK,
+        }
+        result = mt5.order_send(request)
+        if result.retcode == mt5.TRADE_RETCODE_DONE:
+            logging.info(
+                f"Time stop closed strategy position #{pos.ticket} after "
+                f"{MODEL.max_horizon} bars."
+            )
+        else:
+            logging.error(
+                f"Time stop failed for strategy position #{pos.ticket}: "
+                f"broker code {result.retcode}"
+            )
+
 # ==========================================
 # 5. THE ACTIVE POLLING LOOP 
 # ==========================================
@@ -673,7 +726,7 @@ try:
         pass
     # ----------------------------------------
     
-    initial_positions = mt5.positions_get(symbol=SYMBOL)
+    initial_positions = get_strategy_positions()
     if initial_positions:
         active_trade_tickets = {p.ticket for p in initial_positions}
 
@@ -693,6 +746,7 @@ try:
 
         # --- NEW: ACTIVE BREAK-EVEN MONITOR ---
         apply_breakeven()
+        apply_time_stop()
         # --------------------------------------
 
         # --- NEW: WEEKEND GAP PROTECTION CHECK ---
@@ -767,7 +821,7 @@ try:
                 # --- UPDATED: Injected Server Time ---
                 logging.info(f"    -> [{srv_time}] Model A: {sig_a} ({sig_name}) | Model B Gatekeeper: {prob_b*100:.2f}%")
                 
-                if prob_b > GATEKEEPER_THRESHOLD and sig_a in [1, 2]:
+                if prob_b >= GATEKEEPER_THRESHOLD and sig_a in [1, 2]:
                     trade_action = 1 if sig_a == 1 else -1
                     logging.info(f"    -> [{srv_time}] AI THRESHOLD MET. Initiating Trade Routing...")
                     execute_trade(trade_action, current_atr)
