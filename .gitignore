@@ -3,3 +3,9 @@ Archieved
 outputs
 .env
 trading_bot.log
+*.pkl
+*.csv
+*.pth
+*.png
+*.onnx
+*.data
